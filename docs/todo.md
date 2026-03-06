@@ -7,3 +7,6 @@
 - [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
 - [ ] Implement chat orchestration: load chat + memories, stream via model, handle tool preview → permission → execute, persist messages.
+- [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
+- [ ] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
+- [ ] Add tests for all backend components (config, interfaces, routes, storage implementations, model provider, orchestration).

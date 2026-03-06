@@ -50,6 +50,18 @@
 - **ModelProvider** interface (e.g. `stream_chat`, `embed`) with implementations: OpenAI, later local (Ollama / LM Studio / vLLM).
 - **Exposed thoughts**: Stream **raw chain-of-thought** (and any other reasoning) to the client over WebSocket so the UI can show full reasoning, not only high-level summaries.
 
+### Model switch per chat
+
+- The **model used for a chat** is stored per chat (e.g. `ChatRecord.model`) and can be changed by the user.
+- **When**: Model switch is allowed **only when there is no active request or token streaming** for that chat. While the backend is streaming a response for a chat, changing that chat’s model is disallowed (API returns an error or the UI disables the control).
+- Backend must track whether each chat has an active stream; allow `PATCH /chats/{id}` (model change) only when the chat is idle.
+
+### Interrupt streaming
+
+- The user must be able to **stop the current generation** mid-stream (“cancel” / “interrupt”).
+- **Flow**: Client sends an interrupt message over the WebSocket (e.g. `{ type: "interrupt" }`). Backend stops consuming the model stream (e.g. cancel the async task or close the provider stream), sends a terminal event to the client (e.g. `done` with `stopped: true`), and persists whatever was generated so far as the assistant message.
+- **ModelProvider**: Streaming should be cancellable (e.g. `stream_chat` is an async generator that can be closed from outside, or the provider accepts an abort signal). Implementations (OpenAI, local) must support early termination where the underlying API allows it.
+
 ---
 
 ## 4. Tools, RAGs, and Special Actions
@@ -85,3 +97,11 @@
 | Tool execution | Preview of proposed action first, then permission check, then execute or skip. |
 | Users & auth | No auth code or UI; default single user implied until multi-user is added. |
 | Reasoning | Exposed thoughts including raw chain-of-thought streamed to the UI. |
+| Model switch | Allowed per chat only when no active request or streaming; rejected while stream is active. |
+| Interrupt | Client can send interrupt over WebSocket; backend stops stream, sends done(stopped), persists partial response. |
+
+---
+
+## 7. LLM API optimizations
+
+A separate list is kept in **`docs/optimizations.md`**: which optimizations are implementable now (RAG, tool-first) and what is needed for the rest (multi-model routing, prompt caching, local-for-cheap-tasks, batch). That doc is the single place to track status and required work.
