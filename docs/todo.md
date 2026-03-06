@@ -4,7 +4,7 @@
 - [x] Define tool preview format (e.g. title, summary, affected resources, dry-run result) — in `backend/interfaces/tools.py` (`ToolPreview`, `Tool.preview()`).
 - [x] Implement aiohttp app skeleton: routes + one WS endpoint per chat — `backend/main.py`, `backend/routes/http.py`, `backend/routes/ws.py`.
 - [x] Define WebSocket message schema (client → server: send message, permission decision, interrupt; server → client: token, reasoning, tool_preview, permission_request, tool_result, done, error) — `backend/ws_schema.py`, `docs/ws_schema.md`, used in `backend/routes/ws.py`.
-- [ ] Chat names and rename: POST /chats accepts optional `title` (server default e.g. "New chat" if omitted); PATCH /chats/{id} supports `title` (rename). Return `title` in chat list and GET /chats/{id} (see architecture: Chat names and titles).
+- [x] Chat names and rename: POST /chats accepts optional `title` (server default "New chat" if omitted); PATCH /chats/{id} supports `title`, `model`, `archived`. Return `title` in chat list and GET /chats/{id}. In-memory ChatStore used (suitable for testing; file-based can be wired in when implemented).
 - [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
 - [ ] Implement chat orchestration: load chat + memories, stream via model, handle tool preview → permission → execute, persist messages.

@@ -4,6 +4,7 @@ from aiohttp import web
 
 from backend.config import load_config
 from backend.routes import setup_http_routes, setup_ws_routes
+from backend.storage import InMemoryChatStore
 
 
 def create_app(config_path: str | None = None) -> web.Application:
@@ -11,8 +12,7 @@ def create_app(config_path: str | None = None) -> web.Application:
     config = load_config(config_path)
     app = web.Application()
     app["config"] = config
-    # Placeholders for injected dependencies (set when implementing stores/provider)
-    # app["chat_store"] = ...
+    app["chat_store"] = InMemoryChatStore()
     # app["memory_store"] = ...
     # app["model_provider"] = ...
     setup_http_routes(app)

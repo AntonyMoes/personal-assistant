@@ -25,8 +25,8 @@ class ToolPreview:
     title: str
     summary: str
     affected_resources: list[str]  # e.g. ["path/to/file.md", "https://..."]
-    dry_run_result: str | None = None  # if the tool can compute a safe preview
     arguments: dict[str, Any]  # args that would be passed to the tool
+    dry_run_result: str | None = None  # if the tool can compute a safe preview
 
 
 @dataclass

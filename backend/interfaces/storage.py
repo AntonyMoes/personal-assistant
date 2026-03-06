@@ -33,9 +33,9 @@ class MemoryRecord:
     user_id: UserId
     key: str  # or scope/tag
     content: str
-    chat_id: ChatId | None = None  # None = global memory
     created_at: str
     updated_at: str
+    chat_id: ChatId | None = None  # None = global memory
 
 
 class ChatStore(Protocol):
