@@ -6,13 +6,36 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_ws_send_message_returns_done(client):
-    ws = await client.ws_connect("/ws/chats/test-chat-id")
+    # Create a chat so send_message has a valid chat_id
+    r = await client.post("/chats", json={"title": "Test"})
+    assert r.status == 201
+    chat_id = (await r.json())["id"]
+    ws = await client.ws_connect(f"/ws/chats/{chat_id}")
+    await ws.send_str(json.dumps({"type": "send_message", "payload": {"content": "hi"}}))
+    # Stub provider streams tokens then done; consume until done
+    done_msg = None
+    while True:
+        msg = await ws.receive()
+        assert msg.type == 1
+        data = json.loads(msg.data)
+        if data["type"] == "done":
+            done_msg = data
+            break
+        if data["type"] == "error":
+            pytest.fail(f"Unexpected error: {data}")
+    assert done_msg["payload"]["stopped"] is False
+    await ws.close()
+
+
+@pytest.mark.asyncio
+async def test_ws_send_message_nonexistent_chat_returns_error(client):
+    ws = await client.ws_connect("/ws/chats/nonexistent-chat-id")
     await ws.send_str(json.dumps({"type": "send_message", "payload": {"content": "hi"}}))
     msg = await ws.receive()
-    assert msg.type == 1  # WSMsgType.TEXT
+    assert msg.type == 1
     data = json.loads(msg.data)
-    assert data["type"] == "done"
-    assert data["payload"]["stopped"] is False
+    assert data["type"] == "error"
+    assert data["payload"].get("code") == "not_found"
     await ws.close()
 
 

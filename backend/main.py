@@ -3,6 +3,7 @@
 from aiohttp import web
 
 from backend.config import load_config
+from backend.providers import StubModelProvider
 from backend.routes import setup_http_routes, setup_ws_routes
 from backend.storage import InMemoryChatStore
 
@@ -14,7 +15,7 @@ def create_app(config_path: str | None = None) -> web.Application:
     app["config"] = config
     app["chat_store"] = InMemoryChatStore()
     # app["memory_store"] = ...
-    # app["model_provider"] = ...
+    app["model_provider"] = StubModelProvider()
     setup_http_routes(app)
     setup_ws_routes(app)
     return app

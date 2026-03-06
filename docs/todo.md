@@ -5,11 +5,11 @@
 - [x] Implement aiohttp app skeleton: routes + one WS endpoint per chat — `backend/main.py`, `backend/routes/http.py`, `backend/routes/ws.py`.
 - [x] Define WebSocket message schema (client → server: send message, permission decision, interrupt; server → client: token, reasoning, tool_preview, permission_request, tool_result, done, error) — `backend/ws_schema.py`, `docs/ws_schema.md`, used in `backend/routes/ws.py`.
 - [x] Chat names and rename: POST /chats accepts optional `title` (server default "New chat" if omitted); PATCH /chats/{id} supports `title`, `model`, `archived`. Return `title` in chat list and GET /chats/{id}. In-memory ChatStore used (suitable for testing; file-based can be wired in when implemented).
-- [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
+- [x] Implement chat orchestration: load chat, stream via model (stub provider), persist messages; interrupt cancels stream and persists partial (tool preview → permission → execute deferred).
+- [x] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
-- [ ] Implement chat orchestration: load chat + memories, stream via model, handle tool preview → permission → execute, persist messages.
 - [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
-- [ ] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
+- [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
 - [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
 - [x] Add tests for backend components (subtasks; tick when done):
   - [x] Config: load_config (no file, with file, env substitution, path resolution).
@@ -20,4 +20,4 @@
   - [x] In-memory storage: InMemoryChatStore (create, get, list, update, append_messages, delete).
   - [ ] File-based storage: ChatStore, MemoryStore, EmbeddingStore.
   - [ ] OpenAI ModelProvider.
-  - [ ] Chat orchestration.
+  - [x] Chat orchestration (stub provider; stream + persist + interrupt).
