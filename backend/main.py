@@ -3,6 +3,26 @@
 from aiohttp import web
 
 from backend.config import load_config
+
+
+@web.middleware
+async def cors_middleware(request, handler):
+    """Add CORS headers for local frontend development."""
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Max-Age": "86400",
+            },
+        )
+    response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
 from backend.providers import StubModelProvider
 from backend.routes import setup_http_routes, setup_ws_routes
 from backend.storage import InMemoryChatStore, InMemoryEmbeddingStore, InMemoryMemoryStore
@@ -12,7 +32,7 @@ from backend.tools import RememberTool
 def create_app(config_path: str | None = None) -> web.Application:
     """Build aiohttp app with config and routes. No auth; default user implied."""
     config = load_config(config_path)
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     app["config"] = config
     app["chat_store"] = InMemoryChatStore()
     app["memory_store"] = InMemoryMemoryStore()

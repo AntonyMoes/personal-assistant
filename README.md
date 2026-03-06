@@ -11,6 +11,18 @@ From the **project root** (this directory):
 
 Or: `python -m backend.main` if your venv is already activated. Do not run `python backend/main.py` — the `backend` package must be imported from the root.
 
+## Frontend
+
+From the **project root**:
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Then open http://localhost:1234 (Parcel default). The app talks to the backend at `http://127.0.0.1:8765` by default; set `API_URL` and `WS_URL` if your backend runs elsewhere.
+
 ## Tests
 
 From the **project root**:
