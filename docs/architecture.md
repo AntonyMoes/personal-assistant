@@ -13,7 +13,7 @@
 ## 1. React Web UI
 
 - **Streaming**: **WebSockets** (not SSE). Single WS connection per active chat (or one multiplexed) for real-time token/reasoning stream.
-- **Chats**: List (sort by user, archived/active), archive/unarchive, switch model per chat, view linked memories.
+- **Chats**: List (sort by user, archived/active), each with a **title** (display name). User can **rename** a chat. New chats get a default title; the service may **auto-set the title from the first user message** (e.g. truncate or short summary) so the list shows a meaningful name without manual rename. Archive/unarchive, switch model per chat, view linked memories.
 - **Memories**: Global view of stored memories (filter, edit, delete).
 - **Settings**: Default model, permissions defaults (always ask / ask once per chat / allow / deny per capability).
 - **Permissions UX**: **In-chat, blocking**. When a tool requires permission:
@@ -37,6 +37,7 @@
 - **Config**: `config.yaml` (see `config.example.yaml`) + `backend/config.py` — config is loaded into dataclasses (`Config`, `ServerConfig`, `AppConfig`, `StorageConfig`, `ModelConfig`, `PermissionsConfig`). Server host/port, default user, storage paths, model provider name, permission defaults. Secrets via environment variables (e.g. `${OPENAI_API_KEY}`). Dependencies: `requirements.txt` (aiohttp, pyyaml).
 - **Entry**: `backend/main.py` — `create_app()`, `run_app()`; loads config and mounts routes.
 - **Routes**: `backend/routes/http.py` (REST: `/health`, `/chats`, `/memories`, `/models`, `/settings`), `backend/routes/ws.py` (WebSocket: `/ws/chats/{chat_id}`). WebSocket message schema: `backend/ws_schema.py`; spec: `docs/ws_schema.md`.
+- **Chat names and titles**: Each chat has a `title` (ChatRecord.title). Create chat: client may send optional `title`; server uses a default (e.g. "New chat") if omitted. Rename: `PATCH /chats/{id}` with `title` in body. **Auto-default from first message**: when the first user message is received for a chat that still has the default title, the backend may set the chat title to a derived value (e.g. first N characters of the message, or a short model-generated summary) so the list shows a meaningful name without the user renaming. This is optional and can be a config or per-request behaviour.
 - **Interfaces** (swappable implementations):
   - `backend/interfaces/model.py` — `ModelProvider` (stream_chat, embed, list_models), `ChatRequest`, `ChatMessage`, `ModelEvent` / `ModelEventType`.
   - `backend/interfaces/storage.py` — `ChatStore`, `MemoryStore`, `EmbeddingStore`; `ChatRecord`, `MemoryRecord`.

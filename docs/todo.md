@@ -4,11 +4,13 @@
 - [x] Define tool preview format (e.g. title, summary, affected resources, dry-run result) — in `backend/interfaces/tools.py` (`ToolPreview`, `Tool.preview()`).
 - [x] Implement aiohttp app skeleton: routes + one WS endpoint per chat — `backend/main.py`, `backend/routes/http.py`, `backend/routes/ws.py`.
 - [x] Define WebSocket message schema (client → server: send message, permission decision, interrupt; server → client: token, reasoning, tool_preview, permission_request, tool_result, done, error) — `backend/ws_schema.py`, `docs/ws_schema.md`, used in `backend/routes/ws.py`.
+- [ ] Chat names and rename: POST /chats accepts optional `title` (server default e.g. "New chat" if omitted); PATCH /chats/{id} supports `title` (rename). Return `title` in chat list and GET /chats/{id} (see architecture: Chat names and titles).
 - [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
 - [ ] Implement chat orchestration: load chat + memories, stream via model, handle tool preview → permission → execute, persist messages.
 - [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
 - [ ] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
+- [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
 - [ ] Add tests for backend components (subtasks; tick when done):
   - [ ] Config: load_config (no file, with file, env substitution, path resolution).
   - [ ] WS schema: parse_client_message (valid/invalid/missing type), build_* output shape.
