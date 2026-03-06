@@ -1,0 +1,76 @@
+# Personal LLM Assistant — Architecture
+
+## Overview
+
+- **Frontend**: React SPA (chats, memories, settings, in-chat permissions).
+- **Backend**: Async Python over **raw aiohttp** (HTTP + WebSockets).
+- **Models**: Swappable providers (OpenAI first, local later).
+- **Tools & RAG**: Pluggable tools with **preview-before-execute** and capability-based permissions.
+- **Storage**: Pluggable backends; start with file-based (chats, memories, embeddings); migration path between backends.
+
+---
+
+## 1. React Web UI
+
+- **Streaming**: **WebSockets** (not SSE). Single WS connection per active chat (or one multiplexed) for real-time token/reasoning stream.
+- **Chats**: List (sort by user, archived/active), archive/unarchive, switch model per chat, view linked memories.
+- **Memories**: Global view of stored memories (filter, edit, delete).
+- **Settings**: Default model, permissions defaults (always ask / ask once per chat / allow / deny per capability).
+- **Permissions UX**: **In-chat, blocking**. When a tool requires permission:
+  - The model first sends a **preview** of the proposed action (see Tools section).
+  - Permission UI appears **inside the chat** (e.g. inline card or message).
+  - Only that chat is blocked until the user approves or denies; no global modal.
+  - After resolution, stream continues (tool runs or is skipped).
+
+---
+
+## 2. Async HTTP API (Backend)
+
+- **Stack**: **Raw aiohttp** (no FastAPI/Starlette). Use `aiohttp.web` for HTTP routes and `aiohttp.web.WebSocketResponse` for WS.
+- **Responsibilities**:
+  - REST for CRUD: chats, memories, models list, settings.
+  - **WebSocket** per chat (or multiplexed) for: message send + streaming back (tokens, reasoning, tool previews, permission requests, tool results).
+- **User model**: Backend may support multiple users in data model (e.g. `user_id` on chats/memories), but **no auth code or UI**. A single **default/implied user** is used until you add multi-user support; no login, no tokens, no user switcher.
+
+---
+
+## 3. Swappable Model Interfaces
+
+- **ModelProvider** interface (e.g. `stream_chat`, `embed`) with implementations: OpenAI, later local (Ollama / LM Studio / vLLM).
+- **Exposed thoughts**: Stream **raw chain-of-thought** (and any other reasoning) to the client over WebSocket so the UI can show full reasoning, not only high-level summaries.
+
+---
+
+## 4. Tools, RAGs, and Special Actions
+
+- **Tool interface**: name, description, JSON schema for args, `async call(args, context) -> ToolResult`.
+- **Capabilities**: Each tool declares capabilities (e.g. `filesystem_write`, `web_search`, `obsidian_modify`). Permissions are configured per capability (always ask / ask once per chat / allow / deny).
+- **Preview-before-execute**:
+  - When the model decides to use a tool, it does **not** execute immediately.
+  - Backend asks the **ModelProvider** (or a dedicated step) to produce a **preview** of the proposed action: human-readable summary of what will be done (e.g. “Create file `foo.md` with content …”, “Run web search for …”).
+  - This preview is sent to the client over the WebSocket.
+  - **If permission is “always allow”**: optionally skip UI and run after preview (or still show preview in chat for transparency).
+  - **If permission is “ask”**: show the preview in-chat and block until user approves/denies.
+  - Only after approval (or auto-allow) does the backend actually call the tool and stream the result.
+- **RAG**: Implemented as tools (e.g. Obsidian search, file search) using the shared embedding + vector storage; same preview/permission flow if the tool is considered sensitive.
+
+---
+
+## 5. Storage Layer
+
+- **Interfaces**: `ChatStore`, `MemoryStore`, `EmbeddingStore` (with implementations swappable).
+- **Initial**: File-based (e.g. one file per chat, one per memory, file-based embeddings index).
+- **Migration**: Utility to read from one backend and write to another (e.g. file → SQLite/Postgres, file embeddings → vector DB) without changing orchestration code.
+
+---
+
+## 6. Refinements Summary
+
+| Area | Decision |
+|------|----------|
+| Streaming | WebSockets only (no SSE). |
+| Permission UI | In-chat, blocks only current chat until resolved. |
+| Backend | Raw aiohttp (HTTP + WebSocket). |
+| Tool execution | Preview of proposed action first, then permission check, then execute or skip. |
+| Users & auth | No auth code or UI; default single user implied until multi-user is added. |
+| Reasoning | Exposed thoughts including raw chain-of-thought streamed to the UI. |
