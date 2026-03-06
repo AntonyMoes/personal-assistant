@@ -8,9 +8,13 @@
 - [x] Implement chat orchestration: load chat, stream via model (stub provider), persist messages; interrupt cancels stream and persists partial (tool preview → permission → execute deferred).
 - [x] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
-- [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
+- [x] **Memory**: In-memory `MemoryStore`; memory REST API (list, get, create, update, delete); wire `app["memory_store"]`; optionally load memories into orchestration for chat context (e.g. inject as system/user context when streaming).
+- [x] In-memory `EmbeddingStore` (upsert, search, delete, delete_namespace); wired as `app["embedding_store"]` so RAG/tools can use it and swap to file-based later.
 - [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
+- [ ] Implement `/models` and `/settings` handlers: wire `ModelProvider.list_models()` for GET /models; implement GET/PATCH /settings (permission defaults; persist if needed).
+- [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
 - [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
+- [ ] Optional: Wire tools into orchestration (tool_call → preview → permission_decision → execute → tool_result; see architecture §4).
 - [x] Add tests for backend components (subtasks; tick when done):
   - [x] Config: load_config (no file, with file, env substitution, path resolution).
   - [x] WS schema: parse_client_message (valid/invalid/missing type), build_* output shape.
@@ -18,6 +22,8 @@
   - [x] HTTP routes: GET /health, GET /chats etc. return expected status and JSON shape (stub app).
   - [x] Interfaces: dataclasses (e.g. ToolPreview, ChatRequest) and type contracts.
   - [x] In-memory storage: InMemoryChatStore (create, get, list, update, append_messages, delete).
+  - [x] In-memory MemoryStore + memory REST routes.
+  - [x] In-memory EmbeddingStore (upsert, search, delete, delete_namespace).
   - [ ] File-based storage: ChatStore, MemoryStore, EmbeddingStore.
   - [ ] OpenAI ModelProvider.
   - [x] Chat orchestration (stub provider; stream + persist + interrupt).

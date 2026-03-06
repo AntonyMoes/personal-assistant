@@ -16,6 +16,18 @@ def _chat_to_json(chat) -> dict:
     }
 
 
+def _memory_to_json(memory) -> dict:
+    return {
+        "id": memory.id,
+        "user_id": memory.user_id,
+        "key": memory.key,
+        "content": memory.content,
+        "created_at": memory.created_at,
+        "updated_at": memory.updated_at,
+        "chat_id": memory.chat_id,
+    }
+
+
 async def health(_: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
@@ -105,14 +117,82 @@ async def update_chat(request: web.Request) -> web.Response:
 
 
 async def list_memories(request: web.Request) -> web.Response:
-    # TODO: get user_id, list from MemoryStore
-    return web.json_response({"memories": []})
+    store = request.app["memory_store"]
+    user_id = request.app["config"].app.default_user_id
+    q = request.query
+    chat_id = q.get("chat_id") or None
+    try:
+        limit = min(max(1, int(q.get("limit", 100))), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    try:
+        offset = max(0, int(q.get("offset", 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    memories = await store.list_memories(user_id, chat_id=chat_id, limit=limit, offset=offset)
+    return web.json_response({"memories": [_memory_to_json(m) for m in memories]})
 
 
 async def get_memory(request: web.Request) -> web.Response:
     memory_id = request.match_info["memory_id"]
-    # TODO: load from MemoryStore
-    return web.json_response({"id": memory_id})
+    store = request.app["memory_store"]
+    memory = await store.get_memory(memory_id)
+    if not memory:
+        return web.json_response({"error": "Not found"}, status=404)
+    return web.json_response(_memory_to_json(memory))
+
+
+async def create_memory(request: web.Request) -> web.Response:
+    try:
+        body = await request.json() if request.body_exists else {}
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    key = body.get("key")
+    content = body.get("content")
+    if not isinstance(key, str) or not key.strip():
+        return web.json_response({"error": "Missing or invalid 'key'"}, status=400)
+    if not isinstance(content, str):
+        return web.json_response({"error": "Missing or invalid 'content'"}, status=400)
+    chat_id = body.get("chat_id")
+    if chat_id is not None and not isinstance(chat_id, str):
+        chat_id = None
+    if isinstance(chat_id, str) and not chat_id.strip():
+        chat_id = None
+    elif isinstance(chat_id, str):
+        chat_id = chat_id.strip()
+    store = request.app["memory_store"]
+    user_id = request.app["config"].app.default_user_id
+    memory = await store.create_memory(user_id, key=key.strip(), content=content.strip(), chat_id=chat_id)
+    return web.json_response(_memory_to_json(memory), status=201)
+
+
+async def update_memory(request: web.Request) -> web.Response:
+    memory_id = request.match_info["memory_id"]
+    try:
+        body = await request.json() if request.body_exists else {}
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    content = body.get("content")
+    if not isinstance(content, str):
+        return web.json_response({"error": "Missing or invalid 'content'"}, status=400)
+    store = request.app["memory_store"]
+    updated = await store.update_memory(memory_id, content.strip())
+    if not updated:
+        return web.json_response({"error": "Not found"}, status=404)
+    return web.json_response(_memory_to_json(updated))
+
+
+async def delete_memory(request: web.Request) -> web.Response:
+    memory_id = request.match_info["memory_id"]
+    store = request.app["memory_store"]
+    ok = await store.delete_memory(memory_id)
+    if not ok:
+        return web.json_response({"error": "Not found"}, status=404)
+    return web.json_response(status=204)
 
 
 async def list_models(request: web.Request) -> web.Response:
@@ -139,6 +219,9 @@ def setup_http_routes(app: web.Application) -> None:
     app.router.add_patch("/chats/{chat_id}", update_chat)
     app.router.add_get("/memories", list_memories)
     app.router.add_get("/memories/{memory_id}", get_memory)
+    app.router.add_post("/memories", create_memory)
+    app.router.add_patch("/memories/{memory_id}", update_memory)
+    app.router.add_delete("/memories/{memory_id}", delete_memory)
     app.router.add_get("/models", list_models)
     app.router.add_get("/settings", get_settings)
     app.router.add_patch("/settings", update_settings)

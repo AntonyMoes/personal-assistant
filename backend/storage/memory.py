@@ -1,19 +1,29 @@
-"""In-memory ChatStore implementation. Suitable for testing and development; data is lost on restart."""
+"""In-memory storage implementations. Suitable for testing and development; data is lost on restart."""
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from backend.interfaces.storage import ChatId, ChatRecord, ChatStore, UserId
+from backend.interfaces import EmbeddingStore
+from backend.interfaces.storage import (
+    ChatId,
+    ChatRecord,
+    ChatStore,
+    MemoryId,
+    MemoryRecord,
+    MemoryStore,
+    UserId,
+)
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-class InMemoryChatStore:
+class InMemoryChatStore(ChatStore):
     """In-memory implementation of ChatStore. Suitable for testing and development; data is lost on restart."""
 
     def __init__(self) -> None:
@@ -119,3 +129,132 @@ class InMemoryChatStore:
         del self._chats[chat_id]
         self._messages.pop(chat_id, None)
         return True
+
+
+class InMemoryMemoryStore(MemoryStore):
+    """In-memory implementation of MemoryStore. Suitable for testing and development; data is lost on restart."""
+
+    def __init__(self) -> None:
+        self._memories: dict[MemoryId, MemoryRecord] = {}
+
+    async def list_memories(
+        self,
+        user_id: UserId,
+        *,
+        chat_id: ChatId | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[MemoryRecord]:
+        items = [m for m in self._memories.values() if m.user_id == user_id]
+        if chat_id is not None:
+            items = [m for m in items if m.chat_id == chat_id]
+        items.sort(key=lambda m: m.updated_at, reverse=True)
+        return items[offset : offset + limit]
+
+    async def get_memory(self, memory_id: MemoryId) -> MemoryRecord | None:
+        return self._memories.get(memory_id)
+
+    async def create_memory(
+        self,
+        user_id: UserId,
+        key: str,
+        content: str,
+        chat_id: ChatId | None = None,
+    ) -> MemoryRecord:
+        memory_id = uuid.uuid4().hex
+        now = _now_iso()
+        record = MemoryRecord(
+            id=memory_id,
+            user_id=user_id,
+            key=key.strip(),
+            content=content.strip(),
+            created_at=now,
+            updated_at=now,
+            chat_id=chat_id,
+        )
+        self._memories[memory_id] = record
+        return record
+
+    async def update_memory(self, memory_id: MemoryId, content: str) -> MemoryRecord | None:
+        record = self._memories.get(memory_id)
+        if not record:
+            return None
+        updated = MemoryRecord(
+            id=record.id,
+            user_id=record.user_id,
+            key=record.key,
+            content=content.strip(),
+            created_at=record.created_at,
+            updated_at=_now_iso(),
+            chat_id=record.chat_id,
+        )
+        self._memories[memory_id] = updated
+        return updated
+
+    async def delete_memory(self, memory_id: MemoryId) -> bool:
+        if memory_id not in self._memories:
+            return False
+        del self._memories[memory_id]
+        return True
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity; 0 if either vector has zero norm."""
+    if len(a) != len(b) or not a:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+
+class InMemoryEmbeddingStore(EmbeddingStore):
+    """In-memory vector store for embeddings. Suitable for testing and development; data is lost on restart."""
+
+    def __init__(self) -> None:
+        # namespace -> id -> (vector, metadata)
+        self._by_namespace: dict[str, dict[str, tuple[list[float], dict[str, Any]]]] = {}
+
+    async def upsert(
+        self,
+        namespace: str,
+        id: str,
+        vector: list[float],
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        if namespace not in self._by_namespace:
+            self._by_namespace[namespace] = {}
+        self._by_namespace[namespace][id] = (list(vector), metadata.copy() if metadata else {})
+
+    async def search(
+        self,
+        namespace: str,
+        query_vector: list[float],
+        *,
+        k: int = 10,
+        filter_metadata: dict[str, Any] | None = None,
+    ) -> list[tuple[str, float, dict[str, Any]]]:
+        items = self._by_namespace.get(namespace, {})
+        if not items:
+            return []
+        filter_d = filter_metadata or {}
+        scored: list[tuple[str, float, dict[str, Any]]] = []
+        for id, (vec, meta) in items.items():
+            if all(meta.get(key) == value for key, value in filter_d.items()):
+                score = _cosine_similarity(query_vector, vec)
+                scored.append((id, score, meta))
+        scored.sort(key=lambda x: -x[1])
+        return scored[:k]
+
+    async def delete(self, namespace: str, id: str) -> bool:
+        if namespace not in self._by_namespace:
+            return False
+        if id not in self._by_namespace[namespace]:
+            return False
+        del self._by_namespace[namespace][id]
+        return True
+
+    async def delete_namespace(self, namespace: str) -> None:
+        self._by_namespace.pop(namespace, None)

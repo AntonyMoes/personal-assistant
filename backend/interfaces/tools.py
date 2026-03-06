@@ -15,6 +15,7 @@ class Capability(StrEnum):
     WEB_SEARCH = "web_search"
     OBSIDIAN_READ = "obsidian_read"
     OBSIDIAN_MODIFY = "obsidian_modify"
+    MEMORY_WRITE = "memory_write"
 
 
 @dataclass
@@ -40,11 +41,12 @@ class ToolResult:
 
 @dataclass
 class ToolContext:
-    """Context passed to Tool.call (user_id, chat_id, embedding store, etc.)."""
+    """Context passed to Tool.call (user_id, chat_id, memory_store, etc.)."""
 
     user_id: str
     chat_id: str | None
-    # Optional: embedder, memory_store, etc. can be injected by the runner
+    memory_store: Any = None  # MemoryStore protocol; None if not available
+    # Optional: embedder, embedding_store, etc. can be injected by the runner
 
 
 class Tool(Protocol):

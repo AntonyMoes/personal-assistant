@@ -39,6 +39,9 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
                             model_provider=model_provider,
                             config=config,
                             stream_task_ref=active_stream,
+                            memory_store=app.get("memory_store"),
+                            user_id=config.app.default_user_id,
+                            tools=app.get("tools") or [],
                         )
                     elif msg_type == "permission_decision":
                         # No tools yet; ack only

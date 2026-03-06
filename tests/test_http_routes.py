@@ -93,3 +93,129 @@ async def test_patch_chat_not_found(client):
         "/chats/nonexistent-id-12345", json={"title": "X"}
     )
     assert resp.status == 404
+
+
+# --- Memories ---
+
+
+@pytest.mark.asyncio
+async def test_list_memories_empty(client):
+    resp = await client.get("/memories")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "memories" in data
+    assert data["memories"] == []
+
+
+@pytest.mark.asyncio
+async def test_create_memory(client):
+    resp = await client.post(
+        "/memories",
+        json={"key": "name", "content": "Alice"},
+    )
+    assert resp.status == 201
+    data = await resp.json()
+    assert "id" in data
+    assert data["key"] == "name"
+    assert data["content"] == "Alice"
+    assert data["chat_id"] is None
+    assert "created_at" in data
+    assert "updated_at" in data
+
+
+@pytest.mark.asyncio
+async def test_create_memory_with_chat_id(client):
+    resp = await client.post(
+        "/memories",
+        json={"key": "pref", "content": "dark", "chat_id": "chat-1"},
+    )
+    assert resp.status == 201
+    data = await resp.json()
+    assert data["chat_id"] == "chat-1"
+
+
+@pytest.mark.asyncio
+async def test_create_memory_missing_key(client):
+    resp = await client.post("/memories", json={"content": "only"})
+    assert resp.status == 400
+    resp2 = await client.post("/memories", json={"key": "", "content": "x"})
+    assert resp2.status == 400
+
+
+@pytest.mark.asyncio
+async def test_create_memory_missing_content(client):
+    resp = await client.post("/memories", json={"key": "k"})
+    assert resp.status == 400
+
+
+@pytest.mark.asyncio
+async def test_get_memory(client):
+    create_resp = await client.post(
+        "/memories", json={"key": "k", "content": "v"}
+    )
+    memory_id = (await create_resp.json())["id"]
+    resp = await client.get(f"/memories/{memory_id}")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["id"] == memory_id
+    assert data["key"] == "k"
+    assert data["content"] == "v"
+
+
+@pytest.mark.asyncio
+async def test_get_memory_not_found(client):
+    resp = await client.get("/memories/nonexistent-id-12345")
+    assert resp.status == 404
+
+
+@pytest.mark.asyncio
+async def test_list_memories_returns_created(client):
+    await client.post("/memories", json={"key": "a", "content": "1"})
+    await client.post("/memories", json={"key": "b", "content": "2"})
+    resp = await client.get("/memories")
+    assert resp.status == 200
+    data = await resp.json()
+    assert len(data["memories"]) >= 2
+    keys = {m["key"] for m in data["memories"]}
+    assert "a" in keys
+    assert "b" in keys
+
+
+@pytest.mark.asyncio
+async def test_patch_memory(client):
+    create_resp = await client.post(
+        "/memories", json={"key": "k", "content": "old"}
+    )
+    memory_id = (await create_resp.json())["id"]
+    resp = await client.patch(f"/memories/{memory_id}", json={"content": "new"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["content"] == "new"
+    get_resp = await client.get(f"/memories/{memory_id}")
+    assert (await get_resp.json())["content"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_patch_memory_not_found(client):
+    resp = await client.patch(
+        "/memories/nonexistent-id-12345", json={"content": "x"}
+    )
+    assert resp.status == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_memory(client):
+    create_resp = await client.post(
+        "/memories", json={"key": "to-delete", "content": "x"}
+    )
+    memory_id = (await create_resp.json())["id"]
+    resp = await client.delete(f"/memories/{memory_id}")
+    assert resp.status == 204
+    get_resp = await client.get(f"/memories/{memory_id}")
+    assert get_resp.status == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_memory_not_found(client):
+    resp = await client.delete("/memories/nonexistent-id-12345")
+    assert resp.status == 404

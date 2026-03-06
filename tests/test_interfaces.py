@@ -80,3 +80,4 @@ def test_tool_context():
 
 def test_capability_enum():
     assert Capability.FILESYSTEM_WRITE.value == "filesystem_write"
+    assert Capability.MEMORY_WRITE.value == "memory_write"

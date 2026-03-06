@@ -30,11 +30,12 @@ class ModelEvent:
 
 @dataclass
 class ChatMessage:
-    """A single message in a conversation (system, user, or assistant)."""
+    """A single message in a conversation (system, user, assistant, or tool)."""
 
-    role: str  # "system" | "user" | "assistant"
+    role: str  # "system" | "user" | "assistant" | "tool"
     content: str
-    # Optional: tool_calls / tool_call_id for assistant messages that use tools
+    tool_calls: list[dict[str, Any]] | None = None  # assistant: [{id, name, arguments}]
+    tool_call_id: str | None = None  # tool role: which call this result is for
 
 
 @dataclass
