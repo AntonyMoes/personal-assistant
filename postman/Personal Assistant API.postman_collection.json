@@ -1,0 +1,196 @@
+{
+  "info": {
+    "name": "Personal Assistant API",
+    "description": "HTTP endpoints for the personal-assistant backend. Set `baseUrl` in collection variables (default http://127.0.0.1:8765). Run the server with `python -m backend.main`. For chat streaming over WebSocket, see postman/WebSocket.md (Postman cannot import WebSocket as a separate request type).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8765" },
+    { "key": "chatId", "value": "" },
+    { "key": "memoryId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Health check."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chats",
+      "item": [
+        {
+          "name": "List Chats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/chats?sort=updated_at&order=desc&limit=100&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"],
+              "query": [
+                { "key": "sort", "value": "updated_at" },
+                { "key": "order", "value": "desc" },
+                { "key": "limit", "value": "100" },
+                { "key": "offset", "value": "0" },
+                { "key": "archived", "value": "false", "disabled": true }
+              ]
+            },
+            "description": "List chats for the default user. Optional: archived, sort, order, limit, offset."
+          }
+        },
+        {
+          "name": "Get Chat",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/chats/{{chatId}}",
+            "description": "Get a single chat by ID. Set chatId in collection/env variables (e.g. from Create Chat response)."
+          }
+        },
+        {
+          "name": "Create Chat",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"New chat\",\n  \"model\": \"gpt-4o\"\n}"
+            },
+            "url": "{{baseUrl}}/chats",
+            "description": "Create a chat. Optional: title (default \"New chat\"), model (default from config). Save the returned id as chatId for Get Chat."
+          }
+        },
+        {
+          "name": "Update Chat",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Renamed chat\",\n  \"model\": \"gpt-4o-mini\",\n  \"archived\": false\n}"
+            },
+            "url": "{{baseUrl}}/chats/{{chatId}}",
+            "description": "Update chat title, model, or archived. Send only fields to change."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Memories",
+      "item": [
+        {
+          "name": "List Memories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/memories?limit=100&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["memories"],
+              "query": [
+                { "key": "limit", "value": "100" },
+                { "key": "offset", "value": "0" },
+                { "key": "chat_id", "value": "", "disabled": true, "description": "Filter by chat ID" }
+              ]
+            },
+            "description": "List memories for the default user. Optional: chat_id, limit, offset."
+          }
+        },
+        {
+          "name": "Get Memory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/memories/{{memoryId}}",
+            "description": "Get a single memory by ID."
+          }
+        },
+        {
+          "name": "Create Memory",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"favorite_color\",\n  \"content\": \"Blue\",\n  \"chat_id\": null\n}"
+            },
+            "url": "{{baseUrl}}/memories",
+            "description": "Create a memory. Required: key, content. Optional: chat_id (omit or null for global). Save returned id as memoryId for Get Memory."
+          }
+        },
+        {
+          "name": "Update Memory",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated content\"\n}"
+            },
+            "url": "{{baseUrl}}/memories/{{memoryId}}",
+            "description": "Update memory content."
+          }
+        },
+        {
+          "name": "Delete Memory",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/memories/{{memoryId}}",
+            "description": "Delete a memory. Returns 204 on success."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Models",
+      "item": [
+        {
+          "name": "List Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/models",
+            "description": "List available models from the configured provider."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/settings",
+            "description": "Get current settings (e.g. permission defaults)."
+          }
+        },
+        {
+          "name": "Update Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": {}\n}"
+            },
+            "url": "{{baseUrl}}/settings",
+            "description": "Update settings (stub; shape may change)."
+          }
+        }
+      ]
+    }
+  ]
+}
