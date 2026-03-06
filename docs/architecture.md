@@ -32,6 +32,17 @@
   - **WebSocket** per chat (or multiplexed) for: message send + streaming back (tokens, reasoning, tool previews, permission requests, tool results).
 - **User model**: Backend may support multiple users in data model (e.g. `user_id` on chats/memories), but **no auth code or UI**. A single **default/implied user** is used until you add multi-user support; no login, no tokens, no user switcher.
 
+### Backend structure (Python 3.13+, aiohttp)
+
+- **Config**: `config.yaml` (see `config.example.yaml`) + `backend/config.py` — config is loaded into dataclasses (`Config`, `ServerConfig`, `AppConfig`, `StorageConfig`, `ModelConfig`, `PermissionsConfig`). Server host/port, default user, storage paths, model provider name, permission defaults. Secrets via environment variables (e.g. `${OPENAI_API_KEY}`). Dependencies: `requirements.txt` (aiohttp, pyyaml).
+- **Entry**: `backend/main.py` — `create_app()`, `run_app()`; loads config and mounts routes.
+- **Routes**: `backend/routes/http.py` (REST: `/health`, `/chats`, `/memories`, `/models`, `/settings`), `backend/routes/ws.py` (WebSocket: `/ws/chats/{chat_id}`).
+- **Interfaces** (swappable implementations):
+  - `backend/interfaces/model.py` — `ModelProvider` (stream_chat, embed, list_models), `ChatRequest`, `ChatMessage`, `ModelEvent` / `ModelEventType`.
+  - `backend/interfaces/storage.py` — `ChatStore`, `MemoryStore`, `EmbeddingStore`; `ChatRecord`, `MemoryRecord`.
+  - `backend/interfaces/tools.py` — `Tool` (name, description, args_schema, capabilities, preview, call), `ToolPreview`, `ToolResult`, `ToolContext`, `Capability`.
+- **Run**: from repo root, `pip install -r requirements.txt` then `python -m backend.main`. Config path: `config.yaml` in repo root, or pass to `run_app(config_path=...)`.
+
 ---
 
 ## 3. Swappable Model Interfaces

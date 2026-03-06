@@ -1,0 +1,32 @@
+# Copy to config.yaml and adjust. Secrets (e.g. API keys) can be set via environment variables.
+
+server:
+  host: "127.0.0.1"
+  port: 8765
+
+# Default user id when no auth is used (single-user mode).
+app:
+  default_user_id: "default"
+
+# Storage: paths for file-based backends.
+storage:
+  base_path: "data"
+  chats_dir: "chats"
+  memories_dir: "memories"
+  embeddings_dir: "embeddings"
+
+# Model provider (e.g. openai, local). Provider-specific options in env or here.
+model:
+  provider: "openai"
+  default_model: "gpt-4o"
+  # openai:
+  #   api_key: "${OPENAI_API_KEY}"
+
+# Permission defaults per capability: ask | ask_once | allow | deny
+permissions:
+  defaults:
+    filesystem_read: "ask"
+    filesystem_write: "ask"
+    web_search: "ask"
+    obsidian_read: "ask"
+    obsidian_modify: "ask"
