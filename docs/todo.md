@@ -11,12 +11,13 @@
 - [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
 - [ ] Implement interrupt streaming: WebSocket interrupt message from client; backend cancels model stream, sends done(stopped), persists partial assistant message (see architecture §3).
 - [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
-- [ ] Add tests for backend components (subtasks; tick when done):
-  - [ ] Config: load_config (no file, with file, env substitution, path resolution).
-  - [ ] WS schema: parse_client_message (valid/invalid/missing type), build_* output shape.
-  - [ ] WS route: connect, send send_message → get done; invalid JSON → error; interrupt → done(stopped).
-  - [ ] HTTP routes: GET /health, GET /chats etc. return expected status and JSON shape (stub app).
-  - [ ] Interfaces: dataclasses (e.g. ToolPreview, ChatRequest) and type contracts.
+- [x] Add tests for backend components (subtasks; tick when done):
+  - [x] Config: load_config (no file, with file, env substitution, path resolution).
+  - [x] WS schema: parse_client_message (valid/invalid/missing type), build_* output shape.
+  - [x] WS route: connect, send send_message → get done; invalid JSON → error; interrupt → done(stopped).
+  - [x] HTTP routes: GET /health, GET /chats etc. return expected status and JSON shape (stub app).
+  - [x] Interfaces: dataclasses (e.g. ToolPreview, ChatRequest) and type contracts.
+  - [x] In-memory storage: InMemoryChatStore (create, get, list, update, append_messages, delete).
   - [ ] File-based storage: ChatStore, MemoryStore, EmbeddingStore.
   - [ ] OpenAI ModelProvider.
   - [ ] Chat orchestration.
