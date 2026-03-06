@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getChat } from '../api/chats';
+import { getChat, getChatMessages, updateChat } from '../api/chats';
 import { useChatWebSocket } from '../ws/useChatWebSocket';
 
 export default function ChatPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
+  const inputRef = useRef(null);
+  const messagesEndRef = useRef(null);
   const [chat, setChat] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState('');
+  const [focusInputAfterSend, setFocusInputAfterSend] = useState(false);
 
   const { sendMessage, sendInterrupt, isStreaming, lastError, connect, connected } = useChatWebSocket(chatId, {
     onToken: (text) => {
@@ -53,8 +58,13 @@ export default function ChatPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getChat(chatId)
-      .then((c) => { if (!cancelled) setChat(c); })
+    Promise.all([getChat(chatId), getChatMessages(chatId)])
+      .then(([c, { messages: msgs }]) => {
+        if (!cancelled) {
+          setChat(c);
+          setMessages((msgs || []).map((m) => ({ role: m.role, content: m.content || '', streaming: false })));
+        }
+      })
       .catch((e) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -69,6 +79,17 @@ export default function ChatPage() {
     if (lastError) setError(lastError);
   }, [lastError]);
 
+  useLayoutEffect(() => {
+    if (focusInputAfterSend && !editingTitle) {
+      inputRef.current?.focus();
+      setFocusInputAfterSend(false);
+    }
+  }, [focusInputAfterSend, editingTitle]);
+
+  useLayoutEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const text = input.trim();
@@ -76,6 +97,27 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setInput('');
     sendMessage(text);
+    setFocusInputAfterSend(true);
+  };
+
+  const handleRenameStart = () => {
+    setTitleValue(chat?.title || '');
+    setEditingTitle(true);
+  };
+
+  const handleRenameSubmit = async (e) => {
+    e?.preventDefault?.();
+    if (!chatId || !chat) return;
+    const title = (titleValue || '').trim() || 'New chat';
+    setEditingTitle(false);
+    if (title === (chat.title || '')) return;
+    setError(null);
+    try {
+      const updated = await updateChat(chatId, { title });
+      setChat(updated);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   if (!chatId) {
@@ -87,8 +129,33 @@ export default function ChatPage() {
 
   return (
     <div className="chat-page">
+      <div className="chat-content">
       <div className="chat-header">
-        <h1 className="chat-title">{chat?.title || 'Chat'}</h1>
+        {editingTitle ? (
+          <form onSubmit={handleRenameSubmit} className="chat-title-form">
+            <input
+              type="text"
+              value={titleValue}
+              onChange={(e) => setTitleValue(e.target.value)}
+              onBlur={handleRenameSubmit}
+              onKeyDown={(e) => e.key === 'Escape' && setEditingTitle(false)}
+              autoFocus
+              className="chat-title-input"
+            />
+          </form>
+        ) : (
+          <h1 className="chat-title">
+            {chat?.title || 'Chat'}
+            <button
+              type="button"
+              className="chat-title-edit"
+              onClick={handleRenameStart}
+              aria-label="Rename chat"
+            >
+              ✎
+            </button>
+          </h1>
+        )}
         {isStreaming && (
           <button type="button" className="btn btn-small" onClick={sendInterrupt}>
             Stop
@@ -106,20 +173,22 @@ export default function ChatPage() {
             {m.streaming && <span className="message-cursor">▌</span>}
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className="chat-form">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message…"
-          disabled={isStreaming}
           className="chat-input"
         />
         <button type="submit" disabled={isStreaming || !input.trim()} className="btn btn-primary">
           Send
         </button>
       </form>
+      </div>
     </div>
   );
 }

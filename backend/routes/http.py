@@ -64,6 +64,16 @@ async def get_chat(request: web.Request) -> web.Response:
     return web.json_response(_chat_to_json(chat))
 
 
+async def get_chat_messages(request: web.Request) -> web.Response:
+    chat_id = request.match_info["chat_id"]
+    store = request.app["chat_store"]
+    chat = await store.get_chat(chat_id)
+    if not chat:
+        return web.json_response({"error": "Not found"}, status=404)
+    messages = await store.get_chat_messages(chat_id)
+    return web.json_response({"messages": messages})
+
+
 async def create_chat(request: web.Request) -> web.Response:
     try:
         body = await request.json() if request.body_exists else {}
@@ -214,6 +224,7 @@ def setup_http_routes(app: web.Application) -> None:
     """Register REST routes on the aiohttp app."""
     app.router.add_get("/health", health)
     app.router.add_get("/chats", list_chats)
+    app.router.add_get("/chats/{chat_id}/messages", get_chat_messages)
     app.router.add_get("/chats/{chat_id}", get_chat)
     app.router.add_post("/chats", create_chat)
     app.router.add_patch("/chats/{chat_id}", update_chat)

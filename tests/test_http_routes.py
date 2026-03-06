@@ -95,6 +95,31 @@ async def test_patch_chat_not_found(client):
     assert resp.status == 404
 
 
+@pytest.mark.asyncio
+async def test_get_chat_messages(client, app):
+    create_resp = await client.post("/chats", json={"title": "Chat"})
+    chat_id = (await create_resp.json())["id"]
+    await app["chat_store"].append_messages(
+        chat_id,
+        [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
+    )
+    resp = await client.get(f"/chats/{chat_id}/messages")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "messages" in data
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][0]["content"] == "hi"
+    assert data["messages"][1]["role"] == "assistant"
+    assert data["messages"][1]["content"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_chat_messages_not_found(client):
+    resp = await client.get("/chats/nonexistent-id-12345/messages")
+    assert resp.status == 404
+
+
 # --- Memories ---
 
 

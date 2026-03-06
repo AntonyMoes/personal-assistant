@@ -57,6 +57,15 @@
           }
         },
         {
+          "name": "Get Chat Messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/chats/{{chatId}}/messages",
+            "description": "Get message history for a chat. Returns { \"messages\": [ { \"role\", \"content\" }, ... ] }."
+          }
+        },
+        {
           "name": "Create Chat",
           "request": {
             "method": "POST",

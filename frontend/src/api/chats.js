@@ -19,6 +19,12 @@ export async function getChat(chatId) {
   return res.json();
 }
 
+export async function getChatMessages(chatId) {
+  const res = await fetch(`${API_BASE}/chats/${chatId}/messages`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function createChat(body = {}) {
   const res = await fetch(`${API_BASE}/chats`, {
     method: 'POST',
