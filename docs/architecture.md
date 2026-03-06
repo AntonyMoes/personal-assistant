@@ -36,7 +36,7 @@
 
 - **Config**: `config.yaml` (see `config.example.yaml`) + `backend/config.py` — config is loaded into dataclasses (`Config`, `ServerConfig`, `AppConfig`, `StorageConfig`, `ModelConfig`, `PermissionsConfig`). Server host/port, default user, storage paths, model provider name, permission defaults. Secrets via environment variables (e.g. `${OPENAI_API_KEY}`). Dependencies: `requirements.txt` (aiohttp, pyyaml).
 - **Entry**: `backend/main.py` — `create_app()`, `run_app()`; loads config and mounts routes.
-- **Routes**: `backend/routes/http.py` (REST: `/health`, `/chats`, `/memories`, `/models`, `/settings`), `backend/routes/ws.py` (WebSocket: `/ws/chats/{chat_id}`).
+- **Routes**: `backend/routes/http.py` (REST: `/health`, `/chats`, `/memories`, `/models`, `/settings`), `backend/routes/ws.py` (WebSocket: `/ws/chats/{chat_id}`). WebSocket message schema: `backend/ws_schema.py`; spec: `docs/ws_schema.md`.
 - **Interfaces** (swappable implementations):
   - `backend/interfaces/model.py` — `ModelProvider` (stream_chat, embed, list_models), `ChatRequest`, `ChatMessage`, `ModelEvent` / `ModelEventType`.
   - `backend/interfaces/storage.py` — `ChatStore`, `MemoryStore`, `EmbeddingStore`; `ChatRecord`, `MemoryRecord`.

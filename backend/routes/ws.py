@@ -3,8 +3,7 @@
 import json
 from aiohttp import web
 
-# TODO: define message schema (client -> server: send_message, permission_decision;
-#       server -> client: token, reasoning, tool_preview, permission_request, tool_result, done)
+from backend.ws_schema import build_done, build_error, parse_client_message
 
 
 async def chat_ws(request: web.Request) -> web.StreamResponse:
@@ -16,14 +15,30 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
     try:
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
-                data = json.loads(msg.data)
-                # Echo placeholder until orchestration is implemented
-                await ws.send_str(json.dumps({"type": "done", "payload": {}}))
+                try:
+                    data = json.loads(msg.data)
+                    msg_type, payload = parse_client_message(data)
+                    if msg_type == "send_message":
+                        # Placeholder: no orchestration yet; just ack done
+                        await _send(ws, build_done())
+                    elif msg_type == "permission_decision":
+                        # TODO: resolve pending permission, continue stream
+                        await _send(ws, build_done())
+                    elif msg_type == "interrupt":
+                        # TODO: cancel stream, persist partial, send done(stopped=True)
+                        await _send(ws, build_done(stopped=True))
+                except (json.JSONDecodeError, ValueError) as e:
+                    await _send(ws, build_error(str(e), code="invalid_message"))
             elif msg.type == web.WSMsgType.ERROR:
                 break
     finally:
         await ws.close()
     return ws
+
+
+async def _send(ws: web.WebSocketResponse, msg: dict) -> None:
+    """Send a server message as JSON."""
+    await ws.send_str(json.dumps(msg))
 
 
 def setup_ws_routes(app: web.Application) -> None:
