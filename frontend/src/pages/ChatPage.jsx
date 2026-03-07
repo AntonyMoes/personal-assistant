@@ -9,6 +9,9 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const skipNextScrollToBottomRef = useRef(false);
+  const didFocusInputForChatRef = useRef(null);
   const [chat, setChat] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,6 +20,8 @@ export default function ChatPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [focusInputAfterSend, setFocusInputAfterSend] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const SCROLL_TO_BOTTOM_THRESHOLD = 100;
 
   const { sendMessage, sendInterrupt, isStreaming, lastError, connect, connected } = useChatWebSocket(chatId, {
     onToken: (text) => {
@@ -119,6 +124,14 @@ export default function ChatPage() {
     if (lastError) setError(lastError);
   }, [lastError]);
 
+  // Focus input when chat is first opened (and when chat loads)
+  useEffect(() => {
+    if (chat && !loading && chatId && didFocusInputForChatRef.current !== chatId) {
+      didFocusInputForChatRef.current = chatId;
+      inputRef.current?.focus();
+    }
+  }, [chat, loading, chatId]);
+
   useLayoutEffect(() => {
     if (focusInputAfterSend && !editingTitle) {
       inputRef.current?.focus();
@@ -127,8 +140,31 @@ export default function ChatPage() {
   }, [focusInputAfterSend, editingTitle]);
 
   useLayoutEffect(() => {
+    if (skipNextScrollToBottomRef.current) {
+      skipNextScrollToBottomRef.current = false;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Show "scroll to bottom" when user has scrolled up
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = el;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      setShowScrollToBottom(distanceFromBottom > SCROLL_TO_BOTTOM_THRESHOLD);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // initial check
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [messages.length]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setShowScrollToBottom(false);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -163,6 +199,7 @@ export default function ChatPage() {
   const handleDeleteMemory = async (memoryId) => {
     try {
       await deleteMemory(memoryId);
+      skipNextScrollToBottomRef.current = true;
       setMessages((prev) => prev.filter((m) => m.type !== 'memory_created' || m.id !== memoryId));
     } catch (err) {
       setError(err.message);
@@ -173,6 +210,7 @@ export default function ChatPage() {
     if (!msg.id || msg.old_content == null) return;
     try {
       await updateMemory(msg.id, { content: msg.old_content });
+      skipNextScrollToBottomRef.current = true;
       setMessages((prev) => prev.filter((m) => m._clientId !== msg._clientId));
     } catch (err) {
       setError(err.message);
@@ -183,6 +221,7 @@ export default function ChatPage() {
     if (!msg.key) return;
     try {
       await createMemory({ key: msg.key, content: msg.content ?? '' });
+      skipNextScrollToBottomRef.current = true;
       setMessages((prev) => prev.filter((m) => m._clientId !== msg._clientId));
     } catch (err) {
       setError(err.message);
@@ -246,7 +285,7 @@ export default function ChatPage() {
           </button>
         )}
       </div>
-      <div className="chat-messages">
+      <div ref={messagesContainerRef} className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">Send a message to start.</div>
         )}
@@ -318,6 +357,18 @@ export default function ChatPage() {
           )
         )}
         <div ref={messagesEndRef} />
+        {showScrollToBottom && (
+          <div className="chat-scroll-to-bottom-wrap">
+            <button
+              type="button"
+              className="chat-scroll-to-bottom"
+              onClick={scrollToBottom}
+              aria-label="Scroll to bottom"
+            >
+              ↓
+            </button>
+          </div>
+        )}
       </div>
       <form onSubmit={handleSubmit} className="chat-form">
         <input

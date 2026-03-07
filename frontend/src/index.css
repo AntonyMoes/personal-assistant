@@ -213,6 +213,29 @@ input, textarea {
   background: #555;
 }
 .chat-empty { padding: 2rem 1rem; color: #808080; text-align: center; }
+.chat-scroll-to-bottom-wrap {
+  position: sticky;
+  bottom: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.5rem;
+  pointer-events: none;
+}
+.chat-scroll-to-bottom-wrap .chat-scroll-to-bottom {
+  pointer-events: auto;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.chat-scroll-to-bottom-wrap .chat-scroll-to-bottom:hover {
+  background: #333;
+  border-color: #555;
+}
 .message {
   padding: 1rem 1.25rem;
   margin: 1rem 0;
