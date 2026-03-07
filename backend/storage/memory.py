@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from backend.interfaces import EmbeddingStore
@@ -17,10 +16,7 @@ from backend.interfaces.storage import (
     MemoryStore,
     UserId,
 )
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+from backend.utils import now_iso
 
 
 class InMemoryChatStore(ChatStore):
@@ -65,7 +61,7 @@ class InMemoryChatStore(ChatStore):
         model: str,
     ) -> ChatRecord:
         chat_id = uuid.uuid4().hex
-        now = _now_iso()
+        now = now_iso()
         record = ChatRecord(
             id=chat_id,
             user_id=user_id,
@@ -101,7 +97,7 @@ class InMemoryChatStore(ChatStore):
             model=new_model,
             archived=new_archived,
             created_at=record.created_at,
-            updated_at=_now_iso(),
+            updated_at=now_iso(),
             message_ids=record.message_ids,
         )
         self._chats[chat_id] = updated
@@ -119,7 +115,7 @@ class InMemoryChatStore(ChatStore):
                 model=record.model,
                 archived=record.archived,
                 created_at=record.created_at,
-                updated_at=_now_iso(),
+                updated_at=now_iso(),
                 message_ids=record.message_ids,
             )
 
@@ -165,7 +161,7 @@ class InMemoryMemoryStore(MemoryStore):
         content: str,
     ) -> MemoryRecord:
         memory_id = uuid.uuid4().hex
-        now = _now_iso()
+        now = now_iso()
         record = MemoryRecord(
             id=memory_id,
             user_id=user_id,
@@ -187,7 +183,7 @@ class InMemoryMemoryStore(MemoryStore):
             key=record.key,
             content=content.strip(),
             created_at=record.created_at,
-            updated_at=_now_iso(),
+            updated_at=now_iso(),
         )
         self._memories[memory_id] = updated
         return updated

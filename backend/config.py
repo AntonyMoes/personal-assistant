@@ -13,6 +13,10 @@ import yaml
 PROVIDER_OPENAI = "openai"
 PROVIDER_STUB = "stub"
 
+# Canonical storage backend names (used by config and storage factory).
+STORAGE_MEMORY = "memory"
+STORAGE_FILE = "file"
+
 
 @dataclass
 class ServerConfig:
@@ -31,6 +35,8 @@ class StorageConfig:
     chats_dir: str = "chats"
     memories_dir: str = "memories"
     embeddings_dir: str = "embeddings"
+    # STORAGE_MEMORY (default) or STORAGE_FILE for ChatStore and MemoryStore
+    backend: str = "memory"
 
 
 @dataclass
@@ -91,11 +97,13 @@ def _dict_to_storage(data: dict[str, Any] | None, base: Path) -> StorageConfig:
     chats = data.get("chats_dir", "chats")
     memories = data.get("memories_dir", "memories")
     embeddings = data.get("embeddings_dir", "embeddings")
+    backend = str(data.get("backend", STORAGE_MEMORY)).lower().strip() or STORAGE_MEMORY
     return StorageConfig(
         base_path=str(base_path),
         chats_dir=str(base_path / chats) if not Path(chats).is_absolute() else chats,
         memories_dir=str(base_path / memories) if not Path(memories).is_absolute() else memories,
         embeddings_dir=str(base_path / embeddings) if not Path(embeddings).is_absolute() else embeddings,
+        backend=backend,
     )
 
 

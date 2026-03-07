@@ -10,11 +10,14 @@
 - [ ] Implement OpenAI `ModelProvider` and wire config + stores into app.
 - [x] **Memory**: In-memory `MemoryStore`; memory REST API (list, get, create, update, delete); wire `app["memory_store"]`; optionally load memories into orchestration for chat context (e.g. inject as system/user context when streaming).
 - [x] In-memory `EmbeddingStore` (upsert, search, delete, delete_namespace); wired as `app["embedding_store"]` so RAG/tools can use it and swap to file-based later.
-- [ ] Implement file-based storage: `ChatStore`, `MemoryStore`, `EmbeddingStore` (see `backend/interfaces/storage.py`).
+- [x] Implement file-based storage: `ChatStore`, `MemoryStore` (config `storage.backend: "file"`; see `backend/storage/file.py`). EmbeddingStore still in-memory only.
+- [ ] **File-based EmbeddingStore**: Persist embeddings to disk (e.g. under `storage.embeddings_dir`); add to storage factory so `create_embedding_store` can return file-based implementation when `storage.backend: "file"`.
 - [ ] Implement `/models` and `/settings` handlers: wire `ModelProvider.list_models()` for GET /models; implement GET/PATCH /settings (permission defaults; persist if needed).
 - [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
 - [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
 - [ ] Optional: Wire tools into orchestration (tool_call → preview → permission_decision → execute → tool_result; see architecture §4).
+- [ ] **File upload in chat**: Allow users to attach/upload files to chat messages; store and reference in message payload.
+- [ ] **File handling for models**: Support file inputs for the model (e.g. image/document understanding, attachments in context).
 - [x] Add tests for backend components (subtasks; tick when done):
   - [x] Config: load_config (no file, with file, env substitution, path resolution).
   - [x] WS schema: parse_client_message (valid/invalid/missing type), build_* output shape.
@@ -24,6 +27,7 @@
   - [x] In-memory storage: InMemoryChatStore (create, get, list, update, append_messages, delete).
   - [x] In-memory MemoryStore + memory REST routes.
   - [x] In-memory EmbeddingStore (upsert, search, delete, delete_namespace).
-  - [ ] File-based storage: ChatStore, MemoryStore, EmbeddingStore.
+  - [x] File-based storage: ChatStore, MemoryStore (tests use tmp_path; real data not touched).
   - [ ] OpenAI ModelProvider.
   - [x] Chat orchestration (stub provider; stream + persist + interrupt).
+  - [ ] Tools: remember, forget (call, preview, upsert/delete by key; with in-memory store).

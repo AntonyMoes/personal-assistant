@@ -25,7 +25,11 @@ async def cors_middleware(request, handler):
 
 from backend.providers import create_model_provider
 from backend.routes import setup_http_routes, setup_ws_routes
-from backend.storage import InMemoryChatStore, InMemoryEmbeddingStore, InMemoryMemoryStore
+from backend.storage import (
+    create_chat_store,
+    create_embedding_store,
+    create_memory_store,
+)
 from backend.tools import ForgetTool, RememberTool
 
 
@@ -36,9 +40,9 @@ def create_app(config_path: str | None = None) -> web.Application:
     config = load_config(config_path)
     app = web.Application(middlewares=[cors_middleware])
     app["config"] = config
-    app["chat_store"] = InMemoryChatStore()
-    app["memory_store"] = InMemoryMemoryStore()
-    app["embedding_store"] = InMemoryEmbeddingStore()
+    app["chat_store"] = create_chat_store(config.storage)
+    app["memory_store"] = create_memory_store(config.storage)
+    app["embedding_store"] = create_embedding_store(config.storage)
     app["model_provider"] = create_model_provider(config.model)
     app["tools"] = [RememberTool(), ForgetTool()]
     setup_http_routes(app)

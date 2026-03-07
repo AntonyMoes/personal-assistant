@@ -8,8 +8,9 @@ server:
 app:
   default_user_id: "default"
 
-# Storage: paths for file-based backends.
+# Storage: backend "memory" (default) or "file". If "file", chats and memories persist to disk.
 storage:
+  backend: "memory"
   base_path: "data"
   chats_dir: "chats"
   memories_dir: "memories"
