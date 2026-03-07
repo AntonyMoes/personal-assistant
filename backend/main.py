@@ -23,21 +23,23 @@ async def cors_middleware(request, handler):
     return response
 
 
-from backend.providers import StubModelProvider
+from backend.providers import create_model_provider
 from backend.routes import setup_http_routes, setup_ws_routes
 from backend.storage import InMemoryChatStore, InMemoryEmbeddingStore, InMemoryMemoryStore
 from backend.tools import RememberTool
 
 
 def create_app(config_path: str | None = None) -> web.Application:
-    """Build aiohttp app with config and routes. No auth; default user implied."""
+    """Build aiohttp app with config and routes. No auth; default user implied.
+    If model_provider is given, it is used instead of creating one from config (e.g. tests use StubModelProvider).
+    """
     config = load_config(config_path)
     app = web.Application(middlewares=[cors_middleware])
     app["config"] = config
     app["chat_store"] = InMemoryChatStore()
     app["memory_store"] = InMemoryMemoryStore()
     app["embedding_store"] = InMemoryEmbeddingStore()
-    app["model_provider"] = StubModelProvider()
+    app["model_provider"] = create_model_provider(config.model)
     app["tools"] = [RememberTool()]
     setup_http_routes(app)
     setup_ws_routes(app)

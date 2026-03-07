@@ -27,7 +27,7 @@ async def test_create_chat_default_title(client):
     data = await resp.json()
     assert "id" in data
     assert data["title"] == "New chat"
-    assert data["model"] == "gpt-4o"
+    assert data["model"] == "stub"
     assert data["archived"] is False
     assert "created_at" in data
     assert "updated_at" in data

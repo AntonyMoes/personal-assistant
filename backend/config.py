@@ -9,6 +9,10 @@ from typing import Any
 
 import yaml
 
+# Canonical provider names (used by config and providers; defined here to avoid circular import).
+PROVIDER_OPENAI = "openai"
+PROVIDER_STUB = "stub"
+
 
 @dataclass
 class ServerConfig:
@@ -31,8 +35,9 @@ class StorageConfig:
 
 @dataclass
 class ModelConfig:
-    provider: str = "openai"
-    default_model: str = "gpt-4o"
+    provider: str = PROVIDER_STUB
+    default_model: str = PROVIDER_STUB
+    openai_api_key: str = ""  # default: use OPENAI_API_KEY env
 
 
 @dataclass
@@ -97,9 +102,13 @@ def _dict_to_storage(data: dict[str, Any] | None, base: Path) -> StorageConfig:
 def _dict_to_model(data: dict[str, Any] | None) -> ModelConfig:
     if not data:
         return ModelConfig()
+    api_key = str(data.get("openai_api_key") or "")
+    if not api_key and os.environ.get("OPENAI_API_KEY"):
+        api_key = os.environ.get("OPENAI_API_KEY", "")
     return ModelConfig(
-        provider=str(data.get("provider", "openai")),
-        default_model=str(data.get("default_model", "gpt-4o")),
+        provider=str(data.get("provider", PROVIDER_STUB)),
+        default_model=str(data.get("default_model", PROVIDER_STUB)),
+        openai_api_key=api_key,
     )
 
 

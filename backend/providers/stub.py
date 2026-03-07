@@ -10,10 +10,13 @@ from backend.interfaces.model import (
     ModelEvent,
     ModelEventType,
 )
+from backend.config import PROVIDER_STUB
 
 
 class StubModelProvider:
     """Yields a simple token stream then done. No tools, no real LLM."""
+
+    name = PROVIDER_STUB
 
     async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ModelEvent]:
         # Echo a short response regardless of input
@@ -29,5 +32,5 @@ class StubModelProvider:
 
     def list_models(self) -> list[dict]:
         return [
-            {"id": "stub", "provider": "stub", "context_length": 4096},
+            {"id": self.name, "provider": self.name, "context_length": 4096},
         ]

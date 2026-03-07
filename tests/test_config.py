@@ -14,8 +14,8 @@ def test_load_config_no_file(tmp_path):
     assert config.server.host == "127.0.0.1"
     assert config.server.port == 8765
     assert config.app.default_user_id == "default"
-    assert config.model.provider == "openai"
-    assert config.model.default_model == "gpt-4o"
+    assert config.model.provider == "stub"
+    assert config.model.default_model == "stub"
 
 
 def test_load_config_with_file(tmp_path):

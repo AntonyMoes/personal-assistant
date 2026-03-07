@@ -15,12 +15,13 @@ storage:
   memories_dir: "memories"
   embeddings_dir: "embeddings"
 
-# Model provider (e.g. openai, local). Provider-specific options in env or here.
+# Model provider. Possible values: openai, stub.
+# - openai: uses OpenAI API (set OPENAI_API_KEY or model.openai_api_key).
+# - stub: no API calls; streams a fixed message (for development/tests).
 model:
-  provider: "openai"
-  default_model: "gpt-4o"
-  # openai:
-  #   api_key: "${OPENAI_API_KEY}"
+  provider: "stub"
+  default_model: "stub"
+  # openai_api_key: "${OPENAI_API_KEY}"
 
 # Permission defaults per capability: ask | ask_once | allow | deny
 permissions:
