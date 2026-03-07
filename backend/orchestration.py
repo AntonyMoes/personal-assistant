@@ -11,6 +11,7 @@ from backend.interfaces.tools import ToolContext
 from backend.ws_schema import (
     build_done,
     build_error,
+    build_memory_created,
     build_reasoning,
     build_token,
     build_tool_call,
@@ -104,9 +105,9 @@ async def _run_stream(
         if isinstance(m.get("role"), str)
     ]
 
-    # Prepend memories as context when memory_store and user_id are available
+    # Prepend global memories as context when memory_store and user_id are available
     if memory_store and user_id:
-        memories = await memory_store.list_memories(user_id, chat_id=chat_id, limit=50)
+        memories = await memory_store.list_memories(user_id, limit=50)
         if memories:
             lines = [f"- {m.key}: {m.content}" for m in memories]
             memory_text = "Stored memories (use when relevant):\n" + "\n".join(lines)
@@ -184,6 +185,17 @@ async def _run_stream(
             result = await tool.call(args, context)
             tool_results.append((tool_id, result.content, result.success))
             await _send(ws, build_tool_result(tool_id, result.success, result.content, data=result.data))
+            if name == "remember" and result.success and result.data:
+                data = result.data or {}
+                mem_id = data.get("id")
+                mem_key = data.get("key")
+                mem_content = data.get("content", "")
+                if mem_id is not None and mem_id != "":
+                    await _send(ws, build_memory_created(
+                        str(mem_id),
+                        str(mem_key) if mem_key is not None else "",
+                        str(mem_content) if mem_content is not None else "",
+                    ))
 
         # Append assistant message with tool_calls and tool result messages for next model call
         assistant_msg = ChatMessage(

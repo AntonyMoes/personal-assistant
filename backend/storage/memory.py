@@ -141,13 +141,10 @@ class InMemoryMemoryStore(MemoryStore):
         self,
         user_id: UserId,
         *,
-        chat_id: ChatId | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[MemoryRecord]:
         items = [m for m in self._memories.values() if m.user_id == user_id]
-        if chat_id is not None:
-            items = [m for m in items if m.chat_id == chat_id]
         items.sort(key=lambda m: m.updated_at, reverse=True)
         return items[offset : offset + limit]
 
@@ -159,7 +156,6 @@ class InMemoryMemoryStore(MemoryStore):
         user_id: UserId,
         key: str,
         content: str,
-        chat_id: ChatId | None = None,
     ) -> MemoryRecord:
         memory_id = uuid.uuid4().hex
         now = _now_iso()
@@ -170,7 +166,6 @@ class InMemoryMemoryStore(MemoryStore):
             content=content.strip(),
             created_at=now,
             updated_at=now,
-            chat_id=chat_id,
         )
         self._memories[memory_id] = record
         return record
@@ -186,7 +181,6 @@ class InMemoryMemoryStore(MemoryStore):
             content=content.strip(),
             created_at=record.created_at,
             updated_at=_now_iso(),
-            chat_id=record.chat_id,
         )
         self._memories[memory_id] = updated
         return updated

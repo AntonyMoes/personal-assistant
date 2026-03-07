@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getChat, getChatMessages, updateChat } from '../api/chats';
+import { deleteMemory } from '../api/memories';
 import { useChatWebSocket } from '../ws/useChatWebSocket';
 
 export default function ChatPage() {
@@ -49,6 +50,17 @@ export default function ChatPage() {
         if (last?.streaming) next[next.length - 1] = { ...last, streaming: false };
         return next;
       });
+    },
+    onMemoryCreated: (payload) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: 'memory_created',
+          id: String(payload.id),
+          key: payload.key != null ? String(payload.key) : '',
+          content: payload.content != null ? String(payload.content) : '',
+        },
+      ]);
     },
     onError: (err) => setError(err),
   });
@@ -103,6 +115,15 @@ export default function ChatPage() {
   const handleRenameStart = () => {
     setTitleValue(chat?.title || '');
     setEditingTitle(true);
+  };
+
+  const handleDeleteMemory = async (memoryId) => {
+    try {
+      await deleteMemory(memoryId);
+      setMessages((prev) => prev.filter((m) => m.type !== 'memory_created' || m.id !== memoryId));
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleRenameSubmit = async (e) => {
@@ -166,13 +187,32 @@ export default function ChatPage() {
         {messages.length === 0 && (
           <div className="chat-empty">Send a message to start.</div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`message message-${m.role}`}>
-            <div className="message-content">{m.content || '\u00a0'}</div>
-            {m.reasoning && <div className="message-reasoning">{m.reasoning}</div>}
-            {m.streaming && <span className="message-cursor">▌</span>}
-          </div>
-        ))}
+        {messages.map((m, i) =>
+          m.type === 'memory_created' ? (
+            <div key={`memory-${m.id || i}`} className="message message-memory">
+              <div className="memory-created-content">
+                <span className="memory-created-label">Memory saved:</span>{' '}
+                {m.key ? <><strong>{m.key}</strong> = </> : null}
+                {m.content ?? ''}
+              </div>
+              <button
+                type="button"
+                className="btn btn-small memory-delete"
+                onClick={() => handleDeleteMemory(m.id)}
+                aria-label="Delete memory"
+                disabled={!m.id}
+              >
+                Delete
+              </button>
+            </div>
+          ) : (
+            <div key={i} className={`message message-${m.role}`}>
+              <div className="message-content">{m.content || '\u00a0'}</div>
+              {m.reasoning && <div className="message-reasoning">{m.reasoning}</div>}
+              {m.streaming && <span className="message-cursor">▌</span>}
+            </div>
+          )
+        )}
         <div ref={messagesEndRef} />
       </div>
       <form onSubmit={handleSubmit} className="chat-form">

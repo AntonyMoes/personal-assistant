@@ -143,20 +143,8 @@ async def test_create_memory(client):
     assert "id" in data
     assert data["key"] == "name"
     assert data["content"] == "Alice"
-    assert data["chat_id"] is None
     assert "created_at" in data
     assert "updated_at" in data
-
-
-@pytest.mark.asyncio
-async def test_create_memory_with_chat_id(client):
-    resp = await client.post(
-        "/memories",
-        json={"key": "pref", "content": "dark", "chat_id": "chat-1"},
-    )
-    assert resp.status == 201
-    data = await resp.json()
-    assert data["chat_id"] == "chat-1"
 
 
 @pytest.mark.asyncio

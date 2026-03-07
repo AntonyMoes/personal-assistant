@@ -29,10 +29,8 @@ def test_memory_record():
         content="likes dark mode",
         created_at="2024-01-01T00:00:00Z",
         updated_at="2024-01-01T00:00:00Z",
-        chat_id=None,
     )
     assert r.key == "pref"
-    assert r.chat_id is None
 
 
 def test_chat_message():

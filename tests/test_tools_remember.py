@@ -58,7 +58,6 @@ async def test_remember_tool_call_creates_memory(tool, memory_store):
     assert memories[0].key == "name"
     assert memories[0].content == "Alice"
     assert memories[0].user_id == "u1"
-    assert memories[0].chat_id == "c1"
 
 
 @pytest.mark.asyncio
@@ -68,7 +67,6 @@ async def test_remember_tool_call_global_scope(tool, memory_store):
     assert result.success is True
     memories = await memory_store.list_memories("u1")
     assert len(memories) == 1
-    assert memories[0].chat_id is None
 
 
 @pytest.mark.asyncio

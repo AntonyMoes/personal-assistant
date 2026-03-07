@@ -38,10 +38,6 @@ class RememberTool:
                     "type": "string",
                     "description": "The fact or content to remember.",
                 },
-                "chat_id": {
-                    "type": "string",
-                    "description": "Optional. If set, the memory is scoped to this chat; if omitted, it is global.",
-                },
             },
             "required": ["key", "content"],
         }
@@ -52,12 +48,10 @@ class RememberTool:
     async def preview(self, args: dict[str, Any], context: ToolContext) -> ToolPreview:
         key = args.get("key", "")
         content = args.get("content", "")[:200]
-        chat_id = args.get("chat_id")
-        scope = f"chat {chat_id}" if chat_id else "global"
         return ToolPreview(
             tool_name=self.name,
             title="Save memory",
-            summary=f"Will remember: [{key}] = {content!r} (scope: {scope})",
+            summary=f"Will remember: [{key}] = {content!r}",
             affected_resources=[],
             arguments=args,
             dry_run_result=None,
@@ -70,20 +64,16 @@ class RememberTool:
         content = (args.get("content") or "").strip()
         if not key or not content:
             return ToolResult(success=False, content="key and content are required.")
-        chat_id = args.get("chat_id")
-        if isinstance(chat_id, str) and not chat_id.strip():
-            chat_id = None
         try:
             record = await context.memory_store.create_memory(
                 context.user_id,
                 key=key,
-                content=content,
-                chat_id=chat_id or context.chat_id,
+                content=content
             )
             return ToolResult(
                 success=True,
                 content=f"Saved memory with id {record.id}.",
-                data={"id": record.id, "key": record.key},
+                data={"id": record.id, "key": record.key, "content": record.content},
             )
         except Exception as e:
             return ToolResult(success=False, content=str(e))

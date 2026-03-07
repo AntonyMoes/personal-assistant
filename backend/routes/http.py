@@ -24,7 +24,6 @@ def _memory_to_json(memory) -> dict:
         "content": memory.content,
         "created_at": memory.created_at,
         "updated_at": memory.updated_at,
-        "chat_id": memory.chat_id,
     }
 
 
@@ -130,7 +129,6 @@ async def list_memories(request: web.Request) -> web.Response:
     store = request.app["memory_store"]
     user_id = request.app["config"].app.default_user_id
     q = request.query
-    chat_id = q.get("chat_id") or None
     try:
         limit = min(max(1, int(q.get("limit", 100))), 500)
     except (TypeError, ValueError):
@@ -139,7 +137,7 @@ async def list_memories(request: web.Request) -> web.Response:
         offset = max(0, int(q.get("offset", 0)))
     except (TypeError, ValueError):
         offset = 0
-    memories = await store.list_memories(user_id, chat_id=chat_id, limit=limit, offset=offset)
+    memories = await store.list_memories(user_id, limit=limit, offset=offset)
     return web.json_response({"memories": [_memory_to_json(m) for m in memories]})
 
 
@@ -165,16 +163,9 @@ async def create_memory(request: web.Request) -> web.Response:
         return web.json_response({"error": "Missing or invalid 'key'"}, status=400)
     if not isinstance(content, str):
         return web.json_response({"error": "Missing or invalid 'content'"}, status=400)
-    chat_id = body.get("chat_id")
-    if chat_id is not None and not isinstance(chat_id, str):
-        chat_id = None
-    if isinstance(chat_id, str) and not chat_id.strip():
-        chat_id = None
-    elif isinstance(chat_id, str):
-        chat_id = chat_id.strip()
     store = request.app["memory_store"]
     user_id = request.app["config"].app.default_user_id
-    memory = await store.create_memory(user_id, key=key.strip(), content=content.strip(), chat_id=chat_id)
+    memory = await store.create_memory(user_id, key=key.strip(), content=content.strip())
     return web.json_response(_memory_to_json(memory), status=201)
 
 

@@ -5,7 +5,7 @@
 - [x] **Chat list**: Page/sidebar — list chats (GET /chats), create chat (POST), select chat → navigate to `/chat/:chatId`, rename (PATCH title).
 - [x] **Chat view + WebSocket**: Message list (user/assistant), input, Send; connect WS to `/ws/chats/:chatId` on mount; send `send_message`, handle `token`/`reasoning`/`done`/`error`; append streamed reply to UI.
 - [x] **Interrupt + model**: Stop button sends `interrupt`; model selector in chat (PATCH /chats/:id model when idle; disabled while streaming).
-- [ ] **Memories**: Page — list (GET /memories, optional chat_id filter), create (POST), edit (PATCH), delete (DELETE).
+- [ ] **Memories**: Page — list (GET /memories), create (POST), edit (PATCH), delete (DELETE). Memories are global. In chat, `memory_created` WS message shows “Memory saved” with Delete button.
 - [ ] **Settings**: Page — GET/PATCH /settings (default model, permissions) when backend supports it; placeholder otherwise.
 - [ ] **Tool permission UI**: When server sends `permission_request`, show inline card in chat (title, summary, etc.); Approve/Deny buttons send `permission_decision` with same `tool_call_id`.
 - [ ] **Polish**: Reasoning visibility toggle, empty/loading/error states, basic responsive layout, CORS if needed.
@@ -40,9 +40,9 @@
 - [ ] Model selector (dropdown) from GET /models; PATCH /chats/:id with model when changed; disabled when streaming.
 
 ### Memories
-- [ ] MemoriesPage: list memories, optional filter by chat_id.
-- [ ] Create memory form (key, content, optional chat_id).
-- [ ] Edit memory (PATCH content); delete (DELETE).
+- [ ] MemoriesPage: list memories (GET /memories; all memories are global).
+- [ ] Create memory form (key, content).
+- [ ] Edit memory (PATCH content); delete (DELETE). In chat: show `memory_created` as “Memory saved” card with Delete button.
 
 ### Settings
 - [ ] SettingsPage: display settings; form for default model / permissions when API is ready.

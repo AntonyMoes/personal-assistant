@@ -14,7 +14,7 @@
 
 - **Streaming**: **WebSockets** (not SSE). Single WS connection per active chat (or one multiplexed) for real-time token/reasoning stream.
 - **Chats**: List (sort by user, archived/active), each with a **title** (display name). User can **rename** a chat. New chats get a default title; the service may **auto-set the title from the first user message** (e.g. truncate or short summary) so the list shows a meaningful name without manual rename. Archive/unarchive, switch model per chat, view linked memories.
-- **Memories**: Global view of stored memories (filter, edit, delete).
+- **Memories**: All memories are **global** (no per-chat scope). Global view of stored memories (list, edit, delete). When the model saves a memory via the **remember** tool, the server sends a `memory_created` WebSocket message so the client can show “Memory saved” in chat with an in-place Delete button; remember does not require confirmation.
 - **Settings**: Default model, permissions defaults (always ask / ask once per chat / allow / deny per capability).
 - **Permissions UX**: **In-chat, blocking**. When a tool requires permission:
   - The model first sends a **preview** of the proposed action (see Tools section).
@@ -83,7 +83,7 @@
 ## 5. Storage Layer
 
 - **Interfaces**: `ChatStore`, `MemoryStore`, `EmbeddingStore` (with implementations swappable).
-- **Initial**: File-based (e.g. one file per chat, one per memory, file-based embeddings index).
+- **Initial**: File-based (e.g. one file per chat, one per memory, file-based embeddings index). **Memories** are global only (`list_memories(user_id, limit, offset)`; no `chat_id`).
 - **Migration**: Utility to read from one backend and write to another (e.g. file → SQLite/Postgres, file embeddings → vector DB) without changing orchestration code.
 
 ---

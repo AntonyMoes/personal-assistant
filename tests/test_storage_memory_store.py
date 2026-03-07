@@ -12,21 +12,13 @@ def store():
 
 @pytest.mark.asyncio
 async def test_create_memory(store):
-    m = await store.create_memory("user1", key="name", content="Alice", chat_id=None)
+    m = await store.create_memory("user1", key="name", content="Alice")
     assert m.id
     assert m.user_id == "user1"
     assert m.key == "name"
     assert m.content == "Alice"
-    assert m.chat_id is None
     assert m.created_at
     assert m.updated_at
-
-
-@pytest.mark.asyncio
-async def test_create_memory_with_chat_id(store):
-    m = await store.create_memory("user1", key="pref", content="dark mode", chat_id="chat-1")
-    assert m.chat_id == "chat-1"
-
 
 @pytest.mark.asyncio
 async def test_get_memory(store):
@@ -54,17 +46,14 @@ async def test_list_memories(store):
 
 
 @pytest.mark.asyncio
-async def test_list_memories_filter_by_chat_id(store):
-    await store.create_memory("user1", "g", "global", chat_id=None)
-    await store.create_memory("user1", "c", "chat", chat_id="ch1")
-    all_items = await store.list_memories("user1")
-    assert len(all_items) == 2
-    chat_items = await store.list_memories("user1", chat_id="ch1")
-    assert len(chat_items) == 1
-    assert chat_items[0].key == "c"
-    # No chat_id filter returns all memories for the user
-    all_again = await store.list_memories("user1", chat_id=None)
-    assert len(all_again) == 2
+async def test_list_memories_returns_all_for_user(store):
+    """list_memories has no chat_id param; returns all memories for the user."""
+    await store.create_memory("user1", "g", "global")
+    await store.create_memory("user1", "c", "chat")
+    items = await store.list_memories("user1")
+    assert len(items) == 2
+    keys = {m.key for m in items}
+    assert keys == {"g", "c"}
 
 
 @pytest.mark.asyncio

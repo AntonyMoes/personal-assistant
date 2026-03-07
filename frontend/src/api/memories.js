@@ -4,7 +4,6 @@ export async function listMemories(params = {}) {
   const q = new URLSearchParams();
   if (params.limit != null) q.set('limit', params.limit);
   if (params.offset != null) q.set('offset', params.offset);
-  if (params.chat_id != null) q.set('chat_id', params.chat_id);
   const url = `${API_BASE}/memories${q.toString() ? '?' + q : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());

@@ -35,7 +35,6 @@ class MemoryRecord:
     content: str
     created_at: str
     updated_at: str
-    chat_id: ChatId | None = None  # None = global memory
 
 
 class ChatStore(Protocol):
@@ -92,7 +91,6 @@ class MemoryStore(Protocol):
         self,
         user_id: UserId,
         *,
-        chat_id: ChatId | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[MemoryRecord]:
@@ -106,7 +104,6 @@ class MemoryStore(Protocol):
         user_id: UserId,
         key: str,
         content: str,
-        chat_id: ChatId | None = None,
     ) -> MemoryRecord:
         ...
 

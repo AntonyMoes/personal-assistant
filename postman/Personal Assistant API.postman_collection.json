@@ -107,11 +107,10 @@
               "path": ["memories"],
               "query": [
                 { "key": "limit", "value": "100" },
-                { "key": "offset", "value": "0" },
-                { "key": "chat_id", "value": "", "disabled": true, "description": "Filter by chat ID" }
+                { "key": "offset", "value": "0" }
               ]
             },
-            "description": "List memories for the default user. Optional: chat_id, limit, offset."
+            "description": "List memories for the default user (all memories are global). Optional: limit, offset."
           }
         },
         {
@@ -130,10 +129,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"favorite_color\",\n  \"content\": \"Blue\",\n  \"chat_id\": null\n}"
+              "raw": "{\n  \"key\": \"favorite_color\",\n  \"content\": \"Blue\"\n}"
             },
             "url": "{{baseUrl}}/memories",
-            "description": "Create a memory. Required: key, content. Optional: chat_id (omit or null for global). Save returned id as memoryId for Get Memory."
+            "description": "Create a memory (global). Required: key, content. Save returned id as memoryId for Get Memory."
           }
         },
         {

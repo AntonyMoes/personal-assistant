@@ -241,6 +241,24 @@ input, textarea {
 }
 .message-cursor { animation: blink 0.8s step-end infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+.message-memory {
+  margin-left: 0;
+  margin-right: auto;
+  background: #1e3a2f;
+  border: 1px solid #2d5a4a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.memory-created-content {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}
+.memory-created-label { color: #808080; font-size: 0.9rem; }
+.memory-delete { flex-shrink: 0; }
 .chat-form {
   display: flex;
   gap: 0.5rem;

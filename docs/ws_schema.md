@@ -34,6 +34,7 @@ Every message is a JSON object:
 | `tool_preview` | `{ "tool_call_id", "name", "title", "summary", "affected_resources", "dry_run_result"?, "arguments" }` | Preview of the proposed tool action (always sent before execution). `tool_call_id` correlates with `tool_call` and `tool_result`. |
 | `permission_request` | Same as `tool_preview` | Backend is waiting for a `permission_decision` with this `tool_call_id`. |
 | `tool_result` | `{ "tool_call_id", "success", "content", "data"? }` | Result of executing a tool. `tool_call_id` correlates with the originating `tool_call`. |
+| `memory_created` | `{ "id": string, "key": string, "content": string }` | Emitted when the **remember** tool successfully saves a memory. No confirmation is required for remember; the client can show this as a dedicated “Memory saved” message (e.g. with an in-place Delete button). |
 | `metadata` | `{ ... }` | Optional server-supplied info (arbitrary payload). |
 | `done` | `{ "stopped": boolean }` | Generation finished. `stopped: true` if the user sent `interrupt`. |
 | `error` | `{ "message": string, "code": string? }` | Error; stream ends. |
@@ -45,5 +46,5 @@ Every message is a JSON object:
 1. Client sends `send_message` with user content.
 2. Server streams `token`, `reasoning`, and optionally `tool_call` → `tool_preview` / `permission_request`.
 3. If permission is required, client shows the preview and sends `permission_decision` with the same `tool_call_id`.
-4. Server may send `tool_result`, then continue streaming until `done`.
+4. Server may send `tool_result`, then continue streaming until `done`. For the **remember** tool, the server also sends `memory_created` after a successful save so the client can show a dedicated “Memory saved” message (e.g. with Delete). Remember does not require a permission decision.
 5. Client may send `interrupt` at any time; server stops and sends `done(stopped: true)`.

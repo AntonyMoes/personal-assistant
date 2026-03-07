@@ -48,6 +48,9 @@ Payload is optional; omit or use {} when there are no extra fields.
     payload: { "tool_call_id": string, "success": boolean, "content": string, "data": object | null }
     tool_call_id: same as the originating tool_call.
 
+  memory_created    Emitted when the remember tool successfully saves a memory (no confirmation needed).
+    payload: { "id": string, "key": string, "content": string }
+
   metadata          Optional server-supplied info. Payload shape is app-specific.
     payload: { ... } (arbitrary)
 
@@ -113,6 +116,7 @@ class ServerMsgType(StrEnum):
     TOOL_PREVIEW = "tool_preview"
     PERMISSION_REQUEST = "permission_request"
     TOOL_RESULT = "tool_result"
+    MEMORY_CREATED = "memory_created"
     METADATA = "metadata"
     DONE = "done"
     ERROR = "error"
@@ -194,6 +198,14 @@ def build_tool_result(
     return server_message(
         ServerMsgType.TOOL_RESULT.value,
         {"tool_call_id": tool_call_id, "success": success, "content": content, "data": data},
+    )
+
+
+def build_memory_created(memory_id: str, key: str, content: str) -> dict[str, Any]:
+    """Emitted when the remember tool saves a memory; frontend can show a message with delete."""
+    return server_message(
+        ServerMsgType.MEMORY_CREATED.value,
+        {"id": memory_id, "key": key, "content": content},
     )
 
 
