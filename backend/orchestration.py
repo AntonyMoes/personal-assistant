@@ -12,6 +12,8 @@ from backend.ws_schema import (
     build_done,
     build_error,
     build_memory_created,
+    build_memory_deleted,
+    build_memory_updated,
     build_reasoning,
     build_token,
     build_tool_call,
@@ -191,9 +193,29 @@ async def _run_stream(
                 mem_key = data.get("key")
                 mem_content = data.get("content", "")
                 if mem_id is not None and mem_id != "":
-                    await _send(ws, build_memory_created(
+                    if data.get("created", True):
+                        await _send(ws, build_memory_created(
+                            str(mem_id),
+                            str(mem_key) if mem_key is not None else "",
+                            str(mem_content) if mem_content is not None else "",
+                        ))
+                    else:
+                        old = data.get("previous_content", "")
+                        await _send(ws, build_memory_updated(
+                            str(mem_id),
+                            str(mem_key) if mem_key is not None else "",
+                            str(old) if old is not None else "",
+                            str(mem_content) if mem_content is not None else "",
+                        ))
+            if name == "forget" and result.success and result.data:
+                data = result.data or {}
+                mem_id = data.get("id")
+                mem_key = data.get("key")
+                mem_content = data.get("content", "")
+                if mem_id is not None and mem_key is not None:
+                    await _send(ws, build_memory_deleted(
                         str(mem_id),
-                        str(mem_key) if mem_key is not None else "",
+                        str(mem_key),
                         str(mem_content) if mem_content is not None else "",
                     ))
 

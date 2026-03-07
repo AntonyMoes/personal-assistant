@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getChat, getChatMessages, updateChat } from '../api/chats';
-import { deleteMemory } from '../api/memories';
+import { createMemory, deleteMemory, updateMemory } from '../api/memories';
 import { useChatWebSocket } from '../ws/useChatWebSocket';
 
 export default function ChatPage() {
@@ -52,12 +52,40 @@ export default function ChatPage() {
       });
     },
     onMemoryCreated: (payload) => {
+      if (!payload || payload.id == null) return;
       setMessages((prev) => [
         ...prev,
         {
           type: 'memory_created',
           id: String(payload.id),
           key: payload.key != null ? String(payload.key) : '',
+          content: payload.content != null ? String(payload.content) : '',
+        },
+      ]);
+    },
+    onMemoryUpdated: (payload) => {
+      if (!payload || payload.id == null) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: 'memory_updated',
+          _clientId: `updated-${Date.now()}-${Math.random()}`,
+          id: String(payload.id),
+          key: payload.key != null ? String(payload.key) : '',
+          old_content: payload.old_content != null ? String(payload.old_content) : '',
+          new_content: payload.new_content != null ? String(payload.new_content) : '',
+        },
+      ]);
+    },
+    onMemoryDeleted: (payload) => {
+      if (!payload || payload.key == null) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: 'memory_deleted',
+          _clientId: `deleted-${Date.now()}-${Math.random()}`,
+          id: payload.id != null ? String(payload.id) : '',
+          key: String(payload.key),
           content: payload.content != null ? String(payload.content) : '',
         },
       ]);
@@ -117,10 +145,45 @@ export default function ChatPage() {
     setEditingTitle(true);
   };
 
+  function getMemoryKey(m) {
+    if (!m || typeof m !== 'object') return null;
+    if (m.type === 'memory_created' || m.type === 'memory_updated' || m.type === 'memory_deleted') return m.key ?? null;
+    return null;
+  }
+
+  function isMostRecentForMemoryKey(msgIndex) {
+    const key = getMemoryKey(messages[msgIndex]);
+    if (key == null || key === '') return true;
+    for (let j = msgIndex + 1; j < messages.length; j++) {
+      if (getMemoryKey(messages[j]) === key) return false;
+    }
+    return true;
+  }
+
   const handleDeleteMemory = async (memoryId) => {
     try {
       await deleteMemory(memoryId);
       setMessages((prev) => prev.filter((m) => m.type !== 'memory_created' || m.id !== memoryId));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRollbackUpdate = async (msg) => {
+    if (!msg.id || msg.old_content == null) return;
+    try {
+      await updateMemory(msg.id, { content: msg.old_content });
+      setMessages((prev) => prev.filter((m) => m._clientId !== msg._clientId));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRollbackDelete = async (msg) => {
+    if (!msg.key) return;
+    try {
+      await createMemory({ key: msg.key, content: msg.content ?? '' });
+      setMessages((prev) => prev.filter((m) => m._clientId !== msg._clientId));
     } catch (err) {
       setError(err.message);
     }
@@ -189,7 +252,7 @@ export default function ChatPage() {
         )}
         {messages.map((m, i) =>
           m.type === 'memory_created' ? (
-            <div key={`memory-${m.id || i}`} className="message message-memory">
+            <div key={`memory-${m.id || i}`} className="message message-memory message-memory-created">
               <div className="memory-created-content">
                 <span className="memory-created-label">Memory saved:</span>{' '}
                 {m.key ? <><strong>{m.key}</strong> = </> : null}
@@ -200,9 +263,50 @@ export default function ChatPage() {
                 className="btn btn-small memory-delete"
                 onClick={() => handleDeleteMemory(m.id)}
                 aria-label="Delete memory"
-                disabled={!m.id}
+                disabled={!m.id || !isMostRecentForMemoryKey(i)}
+                title={!isMostRecentForMemoryKey(i) ? 'Only the most recent change for this memory can be undone.' : undefined}
               >
                 Delete
+              </button>
+            </div>
+          ) : m.type === 'memory_updated' ? (
+            <div key={m._clientId || i} className="message message-memory message-memory-updated">
+              <div className="memory-created-content">
+                <span className="memory-created-label">Memory updated:</span>{' '}
+                {m.key ? <><strong>{m.key}</strong></> : null}
+                <div className="memory-diff">
+                  <span className="memory-old">{m.old_content || '\u00a0'}</span>
+                  <span className="memory-arrow"> → </span>
+                  <span className="memory-new">{m.new_content ?? ''}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-small memory-rollback"
+                onClick={() => handleRollbackUpdate(m)}
+                aria-label="Roll back"
+                disabled={!isMostRecentForMemoryKey(i)}
+                title={!isMostRecentForMemoryKey(i) ? 'Only the most recent change for this memory can be undone.' : undefined}
+              >
+                Roll back
+              </button>
+            </div>
+          ) : m.type === 'memory_deleted' ? (
+            <div key={m._clientId || i} className="message message-memory message-memory-deleted">
+              <div className="memory-created-content">
+                <span className="memory-created-label">Memory deleted:</span>{' '}
+                {m.key ? <><strong>{m.key}</strong> = </> : null}
+                {m.content ?? ''}
+              </div>
+              <button
+                type="button"
+                className="btn btn-small memory-rollback"
+                onClick={() => handleRollbackDelete(m)}
+                aria-label="Roll back"
+                disabled={!isMostRecentForMemoryKey(i)}
+                title={!isMostRecentForMemoryKey(i) ? 'Only the most recent change for this memory can be undone.' : undefined}
+              >
+                Roll back
               </button>
             </div>
           ) : (

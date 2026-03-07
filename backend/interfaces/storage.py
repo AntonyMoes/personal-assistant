@@ -99,6 +99,10 @@ class MemoryStore(Protocol):
     async def get_memory(self, memory_id: MemoryId) -> MemoryRecord | None:
         ...
 
+    async def get_memory_by_key(self, user_id: UserId, key: str) -> MemoryRecord | None:
+        """Return the memory for this user with the given key, or None. Used for upsert and delete by key."""
+        ...
+
     async def create_memory(
         self,
         user_id: UserId,

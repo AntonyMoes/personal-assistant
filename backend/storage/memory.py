@@ -151,6 +151,13 @@ class InMemoryMemoryStore(MemoryStore):
     async def get_memory(self, memory_id: MemoryId) -> MemoryRecord | None:
         return self._memories.get(memory_id)
 
+    async def get_memory_by_key(self, user_id: UserId, key: str) -> MemoryRecord | None:
+        key_ = key.strip()
+        for m in self._memories.values():
+            if m.user_id == user_id and m.key == key_:
+                return m
+        return None
+
     async def create_memory(
         self,
         user_id: UserId,

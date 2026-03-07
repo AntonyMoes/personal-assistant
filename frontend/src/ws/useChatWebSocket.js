@@ -27,9 +27,9 @@ export function useChatWebSocket(chatId, callbacks = {}) {
         const c = callbacksRef.current;
         if (type === 'token' && c.onToken) c.onToken(payload.text || '');
         if (type === 'reasoning' && c.onReasoning) c.onReasoning(payload.text || '');
-        if (type === 'memory_created') {
-          if (c.onMemoryCreated) c.onMemoryCreated(payload || {});
-        }
+        if (type === 'memory_created' && c.onMemoryCreated) c.onMemoryCreated(payload || {});
+        if (type === 'memory_updated' && c.onMemoryUpdated) c.onMemoryUpdated(payload || {});
+        if (type === 'memory_deleted' && c.onMemoryDeleted) c.onMemoryDeleted(payload || {});
         if (type === 'done') {
           setIsStreaming(false);
           if (c.onDone) c.onDone();

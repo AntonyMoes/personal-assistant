@@ -117,6 +117,8 @@ class ServerMsgType(StrEnum):
     PERMISSION_REQUEST = "permission_request"
     TOOL_RESULT = "tool_result"
     MEMORY_CREATED = "memory_created"
+    MEMORY_UPDATED = "memory_updated"
+    MEMORY_DELETED = "memory_deleted"
     METADATA = "metadata"
     DONE = "done"
     ERROR = "error"
@@ -202,9 +204,27 @@ def build_tool_result(
 
 
 def build_memory_created(memory_id: str, key: str, content: str) -> dict[str, Any]:
-    """Emitted when the remember tool saves a memory; frontend can show a message with delete."""
+    """Emitted when the remember tool creates a memory; frontend can show a message with delete."""
     return server_message(
         ServerMsgType.MEMORY_CREATED.value,
+        {"id": memory_id, "key": key, "content": content},
+    )
+
+
+def build_memory_updated(
+    memory_id: str, key: str, old_content: str, new_content: str
+) -> dict[str, Any]:
+    """Emitted when the remember tool updates an existing memory; frontend can show Roll back."""
+    return server_message(
+        ServerMsgType.MEMORY_UPDATED.value,
+        {"id": memory_id, "key": key, "old_content": old_content, "new_content": new_content},
+    )
+
+
+def build_memory_deleted(memory_id: str, key: str, content: str) -> dict[str, Any]:
+    """Emitted when the forget tool deletes a memory; frontend can show Roll back to recreate."""
+    return server_message(
+        ServerMsgType.MEMORY_DELETED.value,
         {"id": memory_id, "key": key, "content": content},
     )
 

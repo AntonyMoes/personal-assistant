@@ -21,9 +21,11 @@ class RememberTool:
     @property
     def description(self) -> str:
         return (
-            "Save something the user asked you to remember, or a preference/fact they shared. "
-            "Use when the user says 'remember that ...', 'don't forget ...', or when you learn "
-            "something about them (name, preferences, context) they would want stored for future chats."
+            "Save or update a memory. Use when the user says 'remember that ...', 'don't forget ...', "
+            "or when you learn something about them (name, preferences, context). "
+            "If a memory with the same key already exists, calling remember with that key and new content "
+            "updates it in place—do not call forget when the user asks to update or change a memory; "
+            "only call forget when they explicitly ask to remove or forget a memory entirely."
         )
 
     def args_schema(self) -> dict[str, Any]:
@@ -32,7 +34,7 @@ class RememberTool:
             "properties": {
                 "key": {
                     "type": "string",
-                    "description": "Short label for the memory (e.g. 'favorite_color', 'birthday', 'prefers_dark_mode').",
+                    "description": "Short label for the memory (e.g. 'favorite_color', 'birthday'). Same key overwrites existing memory (update); do not use forget to update.",
                 },
                 "content": {
                     "type": "string",
@@ -65,15 +67,29 @@ class RememberTool:
         if not key or not content:
             return ToolResult(success=False, content="key and content are required.")
         try:
-            record = await context.memory_store.create_memory(
-                context.user_id,
-                key=key,
-                content=content
-            )
+            store = context.memory_store
+            existing = await store.get_memory_by_key(context.user_id, key)
+            if existing:
+                previous_content = existing.content
+                record = await store.update_memory(existing.id, content)
+                if not record:
+                    return ToolResult(success=False, content="Failed to update memory.")
+                return ToolResult(
+                    success=True,
+                    content=f"Updated memory {record.id}.",
+                    data={
+                        "id": record.id,
+                        "key": record.key,
+                        "content": record.content,
+                        "created": False,
+                        "previous_content": previous_content,
+                    },
+                )
+            record = await store.create_memory(context.user_id, key=key, content=content)
             return ToolResult(
                 success=True,
                 content=f"Saved memory with id {record.id}.",
-                data={"id": record.id, "key": record.key, "content": record.content},
+                data={"id": record.id, "key": record.key, "content": record.content, "created": True},
             )
         except Exception as e:
             return ToolResult(success=False, content=str(e))
