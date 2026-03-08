@@ -340,16 +340,21 @@ input, textarea {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
-  align-items: center;
+  align-items: flex-end;
 }
 .chat-form .btn-primary { border-radius: 12px; padding: 0.75rem 1.25rem; }
 .chat-input {
   flex: 1;
+  min-height: 44px;
+  max-height: 200px;
   padding: 0.75rem 1rem;
   border: 1px solid #444;
   border-radius: 12px;
   background: #2a2a2a;
   color: #e0e0e0;
+  resize: none;
+  font: inherit;
+  line-height: 1.4;
 }
 .chat-input::placeholder { color: #666; }
 

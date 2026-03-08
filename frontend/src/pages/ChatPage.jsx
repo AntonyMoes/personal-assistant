@@ -24,6 +24,8 @@ export default function ChatPage() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const SCROLL_TO_BOTTOM_THRESHOLD = 100;
+  const INPUT_MIN_HEIGHT = 44;
+  const INPUT_MAX_HEIGHT = 200;
 
   const { sendMessage, sendInterrupt, isStreaming, lastError } = useChatWebSocket(chatId, {
     onToken: (text) => {
@@ -135,6 +137,16 @@ export default function ChatPage() {
       setFocusInputAfterSend(false);
     }
   }, [focusInputAfterSend, editingTitle]);
+
+  // Auto-resize textarea to fit content (smooth grow/shrink with min/max)
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const h = Math.min(INPUT_MAX_HEIGHT, Math.max(INPUT_MIN_HEIGHT, el.scrollHeight));
+    el.style.height = `${h}px`;
+    el.style.overflowY = h >= INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
+  }, [input]);
 
   useLayoutEffect(() => {
     if (skipNextScrollToBottomRef.current) {
@@ -388,13 +400,19 @@ export default function ChatPage() {
         )}
       </div>
       <form onSubmit={handleSubmit} className="chat-form">
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Message…"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (input.trim() && !isStreaming) handleSubmit(e);
+            }
+          }}
+          placeholder="Message… (Shift+Enter for new line)"
           className="chat-input"
+          rows={1}
         />
         <button type="submit" disabled={isStreaming || !input.trim()} className="btn btn-primary">
           Send
