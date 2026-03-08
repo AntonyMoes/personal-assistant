@@ -1,8 +1,9 @@
-"""Obsidian vault tool: read, search, backlinks, list by tag, write. Vault semantics and scoped to config path."""
+"""Obsidian vault tool: read, search, backlinks, list by tag, write, delete (files), create_folder, delete_folder. Any file type."""
 
 from __future__ import annotations
 
 import re
+import shutil
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ class ObsidianAction(StrEnum):
     LIST_BY_TAG = "list_by_tag"
     WRITE = "write"
     DELETE = "delete"
+    CREATE_FOLDER = "create_folder"
+    DELETE_FOLDER = "delete_folder"
 
 
 def _vault_root_from_path(vault_path: str) -> Path | None:
@@ -27,24 +30,48 @@ def _vault_root_from_path(vault_path: str) -> Path | None:
     return p if p.is_dir() else None
 
 
-def _resolve_note_path(vault: Path, note_ref: str, should_exist: bool = True) -> Path | None:
-    """Resolve a note reference to a file under vault. Exact path only (no name search)."""
-    ref = (note_ref or "").strip()
+def _normalize_ref(ref: str) -> list[str] | None:
+    """Normalize path ref to parts under vault; None if invalid (.. or .)."""
+    ref = (ref or "").strip().replace("\\", "/")
     if not ref:
         return None
-    # Allow "Note" or "path/to/Note" without .md
-    if not ref.endswith(".md"):
-        ref = f"{ref}.md"
-    # Normalize path: no leading slash, no ..
-    parts = Path(ref).parts
-    if any(p == ".." or p == "." for p in parts):
+    parts = [p for p in ref.split("/") if p and p != "."]
+    if any(p == ".." for p in parts):
         return None
+    return parts
+
+
+def _resolve_file_path(vault: Path, path_ref: str, should_exist: bool = True) -> Path | None:
+    """Resolve a file path under vault. If path has no extension, default to .md (notes). Any extension allowed."""
+    parts = _normalize_ref(path_ref)
+    if not parts:
+        return None
+    # If last segment has no extension, treat as note and add .md
+    if not Path(parts[-1]).suffix:
+        parts[-1] = f"{parts[-1]}.md"
     full = (vault / Path(*parts)).resolve()
     try:
-        full.relative_to(vault)
+        full.relative_to(vault.resolve())
     except ValueError:
         return None
     return full if not should_exist or full.is_file() else None
+
+
+def _resolve_folder_path(vault: Path, path_ref: str, should_exist: bool | None = None) -> Path | None:
+    """Resolve a folder path under vault. should_exist: True = must exist, False = must not exist, None = don't check."""
+    parts = _normalize_ref(path_ref)
+    if not parts:
+        return None
+    full = (vault / Path(*parts)).resolve()
+    try:
+        full.relative_to(vault.resolve())
+    except ValueError:
+        return None
+    if should_exist is True and not full.is_dir():
+        return None
+    if should_exist is False and full.exists():
+        return None
+    return full
 
 
 def _list_md_files(vault: Path) -> list[Path]:
@@ -64,8 +91,16 @@ def _extract_tags(content: str) -> set[str]:
     return set(pattern.findall(content))
 
 
+def _rel_path(vault: Path, path: Path) -> str:
+    """Relative path under vault for display (forward slashes, with extension)."""
+    try:
+        return str(path.relative_to(vault)).replace("\\", "/")
+    except ValueError:
+        return path.name
+
+
 def _note_name_from_path(vault: Path, path: Path) -> str:
-    """Relative path without .md for display."""
+    """Relative path without .md for display (backward compat for note-only contexts)."""
     try:
         rel = path.relative_to(vault)
         name = str(rel.with_suffix("")).replace("\\", "/")
@@ -91,10 +126,10 @@ class ObsidianTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Interact with the user's Obsidian vault. Use when the user asks about their notes, "
-            "to find or read a note, see what links to a note (backlinks), list notes by tag, create/edit a note, or delete a note. "
-            "Actions: read (get note content), search (keyword search), backlinks (notes linking to this one), "
-            "list_by_tag (notes with a tag), write (create or overwrite a note), delete (remove a note file)."
+            "Interact with the user's Obsidian vault: notes, canvases, and any file type. "
+            "Actions: read (get file content; path with or without extension, default .md), search (keyword in .md), "
+            "backlinks (notes linking to a note), list_by_tag (notes with a tag), write (create or overwrite any file), "
+            "delete (remove a file), create_folder (create a folder), delete_folder (remove a folder and its contents)."
         )
 
     def args_schema(self) -> dict[str, Any]:
@@ -108,7 +143,7 @@ class ObsidianTool(Tool):
                 },
                 "path": {
                     "type": "string",
-                    "description": "Note path or name (e.g. 'My Note' or 'folder/note'). For read, backlinks, write, delete.",
+                    "description": "File path with optional extension (e.g. 'My Note' or 'folder/note.md', 'folder/Board.canvas'). Default .md if omitted. For create_folder/delete_folder, folder path (no file extension).",
                 },
                 "query": {
                     "type": "string",
@@ -120,7 +155,7 @@ class ObsidianTool(Tool):
                 },
                 "content": {
                     "type": "string",
-                    "description": "New note content. For action=write.",
+                    "description": "File content (e.g. markdown or JSON for .canvas). For action=write.",
                 },
                 "limit": {
                     "type": "integer",
@@ -144,9 +179,13 @@ class ObsidianTool(Tool):
         if action == ObsidianAction.LIST_BY_TAG.value:
             summary += f" tag=#{args.get('tag', '')}"
         if action == ObsidianAction.WRITE.value:
-            summary += " (create/overwrite note)"
+            summary += " (create/overwrite file)"
         if action == ObsidianAction.DELETE.value:
-            summary += " (remove note file)"
+            summary += " (remove file)"
+        if action == ObsidianAction.CREATE_FOLDER.value:
+            summary += " (create folder)"
+        if action == ObsidianAction.DELETE_FOLDER.value:
+            summary += " (remove folder)"
         return ToolPreview(
             tool_name=self.name,
             title=f"Obsidian {action}",
@@ -177,23 +216,25 @@ class ObsidianTool(Tool):
             return await self._write(vault, args)
         if action == ObsidianAction.DELETE:
             return await self._delete(vault, args)
+        if action == ObsidianAction.CREATE_FOLDER:
+            return await self._create_folder(vault, args)
+        if action == ObsidianAction.DELETE_FOLDER:
+            return await self._delete_folder(vault, args)
         return ToolResult(success=False, content=f"Unknown action: {action!r}")
 
     async def _read(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         path_arg = args.get("path") or ""
-        note_path = _resolve_note_path(vault, path_arg)
-        if not note_path:
-            return ToolResult(success=False, content="Missing or invalid 'path' for read.")
-        if not note_path.exists():
-            return ToolResult(success=False, content=f"Note not found: {_note_name_from_path(vault, note_path)}")
+        file_path = _resolve_file_path(vault, path_arg, should_exist=True)
+        if not file_path:
+            return ToolResult(success=False, content="Missing or invalid 'path' for read, or file does not exist.")
         try:
-            text = note_path.read_text(encoding="utf-8", errors="replace")
+            text = file_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            return ToolResult(success=False, content=f"Failed to read note: {e}")
+            return ToolResult(success=False, content=f"Failed to read file: {e}")
         return ToolResult(
             success=True,
             content=text,
-            data={"path": _note_name_from_path(vault, note_path), "content": text},
+            data={"path": _rel_path(vault, file_path), "content": text},
         )
 
     async def _search(self, vault: Path, args: dict[str, Any]) -> ToolResult:
@@ -252,7 +293,7 @@ class ObsidianTool(Tool):
 
     async def _backlinks(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         path_arg = args.get("path") or ""
-        target_path = _resolve_note_path(vault, path_arg)
+        target_path = _resolve_file_path(vault, path_arg, should_exist=True)
         if not target_path:
             return ToolResult(success=False, content="Missing or invalid 'path' for backlinks.")
         target_name = _note_name_from_path(vault, target_path)
@@ -311,36 +352,72 @@ class ObsidianTool(Tool):
 
     async def _write(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         path_arg = args.get("path") or ""
-        note_path = _resolve_note_path(vault, path_arg, False)
-        if not note_path:
+        file_path = _resolve_file_path(vault, path_arg, should_exist=False)
+        if not file_path:
             return ToolResult(success=False, content="Missing or invalid 'path' for write.")
         content = args.get("content")
         if content is None:
             content = ""
         content = str(content)
         try:
-            note_path.parent.mkdir(parents=True, exist_ok=True)
-            note_path.write_text(content, encoding="utf-8")
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
         except Exception as e:
-            return ToolResult(success=False, content=f"Failed to write note: {e}")
+            return ToolResult(success=False, content=f"Failed to write file: {e}")
         return ToolResult(
             success=True,
-            content=f"Wrote note: {_note_name_from_path(vault, note_path)}",
-            data={"path": _note_name_from_path(vault, note_path)},
+            content=f"Wrote file: {_rel_path(vault, file_path)}",
+            data={"path": _rel_path(vault, file_path)},
         )
 
     async def _delete(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         path_arg = args.get("path") or ""
-        note_path = _resolve_note_path(vault, path_arg, should_exist=True)
-        if not note_path:
-            return ToolResult(success=False, content="Missing or invalid 'path' for delete, or note does not exist.")
+        file_path = _resolve_file_path(vault, path_arg, should_exist=True)
+        if not file_path:
+            return ToolResult(success=False, content="Missing or invalid 'path' for delete, or file does not exist.")
         try:
-            note_path.unlink()
+            file_path.unlink()
         except Exception as e:
-            return ToolResult(success=False, content=f"Failed to delete note: {e}")
-        name = _note_name_from_path(vault, note_path)
+            return ToolResult(success=False, content=f"Failed to delete file: {e}")
+        name = _rel_path(vault, file_path)
         return ToolResult(
             success=True,
-            content=f"Deleted note: {name}",
+            content=f"Deleted file: {name}",
+            data={"path": name},
+        )
+
+    async def _create_folder(self, vault: Path, args: dict[str, Any]) -> ToolResult:
+        path_arg = (args.get("path") or "").strip()
+        if not path_arg:
+            return ToolResult(success=False, content="Missing 'path' for create_folder.")
+        folder_path = _resolve_folder_path(vault, path_arg, should_exist=None)
+        if not folder_path:
+            return ToolResult(success=False, content="Invalid 'path' for create_folder.")
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            return ToolResult(success=False, content=f"Failed to create folder: {e}")
+        name = _rel_path(vault, folder_path)
+        return ToolResult(
+            success=True,
+            content=f"Created folder: {name}",
+            data={"path": name},
+        )
+
+    async def _delete_folder(self, vault: Path, args: dict[str, Any]) -> ToolResult:
+        path_arg = (args.get("path") or "").strip()
+        if not path_arg:
+            return ToolResult(success=False, content="Missing 'path' for delete_folder.")
+        folder_path = _resolve_folder_path(vault, path_arg, should_exist=True)
+        if not folder_path:
+            return ToolResult(success=False, content="Missing or invalid 'path' for delete_folder, or folder does not exist.")
+        try:
+            shutil.rmtree(folder_path)
+        except Exception as e:
+            return ToolResult(success=False, content=f"Failed to delete folder: {e}")
+        name = _rel_path(vault, folder_path)
+        return ToolResult(
+            success=True,
+            content=f"Deleted folder: {name}",
             data={"path": name},
         )

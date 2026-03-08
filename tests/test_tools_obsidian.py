@@ -34,7 +34,10 @@ def test_obsidian_tool_args_schema(tool_with_vault):
     schema = tool_with_vault.args_schema()
     assert schema["type"] == "object"
     assert "action" in schema["properties"]
-    assert schema["properties"]["action"]["enum"] == ["read", "search", "backlinks", "list_by_tag", "write", "delete"]
+    assert set(schema["properties"]["action"]["enum"]) == {
+        "read", "search", "backlinks", "list_by_tag", "write", "delete",
+        "create_folder", "delete_folder",
+    }
     assert "action" in schema["required"]
 
 
@@ -52,7 +55,7 @@ async def test_obsidian_read(tool_with_vault, no_vault_ctx, tmp_path):
     result = await tool_with_vault.call({"action": "read", "path": "Note"}, no_vault_ctx)
     assert result.success is True
     assert "Hello from note" in result.content
-    assert result.data and result.data.get("path") == "Note"
+    assert result.data and result.data.get("path") == "Note.md"
 
 
 @pytest.mark.asyncio
@@ -93,7 +96,7 @@ async def test_obsidian_search_matches_by_note_name(tool_with_vault, no_vault_ct
 async def test_obsidian_read_missing_note(tool_with_vault, no_vault_ctx):
     result = await tool_with_vault.call({"action": "read", "path": "Nonexistent"}, no_vault_ctx)
     assert result.success is False
-    assert "missing or invalid 'path' for read." in result.content.lower()
+    assert "path" in result.content.lower() and ("invalid" in result.content.lower() or "exist" in result.content.lower())
 
 
 @pytest.mark.asyncio
@@ -153,7 +156,7 @@ async def test_obsidian_delete(tool_with_vault, no_vault_ctx, tmp_path):
     assert (tmp_path / "ToDelete.md").is_file()
     result = await tool_with_vault.call({"action": "delete", "path": "ToDelete"}, no_vault_ctx)
     assert result.success is True
-    assert "Deleted note" in result.content
+    assert "Deleted file" in result.content
     assert not (tmp_path / "ToDelete.md").exists()
 
 
@@ -162,6 +165,51 @@ async def test_obsidian_delete_missing_note(tool_with_vault, no_vault_ctx):
     result = await tool_with_vault.call({"action": "delete", "path": "Nonexistent"}, no_vault_ctx)
     assert result.success is False
     assert "path" in result.content.lower() or "not found" in result.content.lower() or "does not exist" in result.content.lower()
+
+
+@pytest.mark.asyncio
+async def test_obsidian_read_write_delete_canvas(tool_with_vault, no_vault_ctx, tmp_path):
+    """Read, write, delete work for any file type (e.g. .canvas)."""
+    canvas_path = tmp_path / "Boards" / "Board.canvas"
+    canvas_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas_path.write_text('{"nodes":[]}', encoding="utf-8")
+    r = await tool_with_vault.call({"action": "read", "path": "Boards/Board.canvas"}, no_vault_ctx)
+    assert r.success is True
+    assert "nodes" in r.content
+    assert r.data and r.data.get("path") == "Boards/Board.canvas"
+    w = await tool_with_vault.call({"action": "write", "path": "Boards/Other.canvas", "content": '{"nodes":[{"id":"1"}]}'}, no_vault_ctx)
+    assert w.success is True
+    assert (tmp_path / "Boards" / "Other.canvas").read_text(encoding="utf-8") == '{"nodes":[{"id":"1"}]}'
+    d = await tool_with_vault.call({"action": "delete", "path": "Boards/Board.canvas"}, no_vault_ctx)
+    assert d.success is True
+    assert not canvas_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_obsidian_create_folder(tool_with_vault, no_vault_ctx, tmp_path):
+    result = await tool_with_vault.call({"action": "create_folder", "path": "Projects/NewFolder"}, no_vault_ctx)
+    assert result.success is True
+    assert "Created folder" in result.content
+    assert (tmp_path / "Projects" / "NewFolder").is_dir()
+    # Idempotent: create again is ok (exist_ok=True)
+    result2 = await tool_with_vault.call({"action": "create_folder", "path": "Projects/NewFolder"}, no_vault_ctx)
+    assert result2.success is True
+
+
+@pytest.mark.asyncio
+async def test_obsidian_delete_folder(tool_with_vault, no_vault_ctx, tmp_path):
+    (tmp_path / "ToRemove").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "ToRemove" / "file.txt").write_text("x", encoding="utf-8")
+    result = await tool_with_vault.call({"action": "delete_folder", "path": "ToRemove"}, no_vault_ctx)
+    assert result.success is True
+    assert "Deleted folder" in result.content
+    assert not (tmp_path / "ToRemove").exists()
+
+
+@pytest.mark.asyncio
+async def test_obsidian_delete_folder_missing(tool_with_vault, no_vault_ctx):
+    result = await tool_with_vault.call({"action": "delete_folder", "path": "Nonexistent"}, no_vault_ctx)
+    assert result.success is False
 
 
 @pytest.mark.asyncio
