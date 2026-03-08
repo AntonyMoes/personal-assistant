@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getChat, getChatMessages, updateChat } from '../api/chats';
+import { getChat, getChatMessages, updateChat, deleteChat } from '../api/chats';
+import ConfirmModal from '../components/ConfirmModal';
 import { createMemory, deleteMemory, updateMemory } from '../api/memories';
 import { useChatWebSocket } from '../ws/useChatWebSocket';
 
@@ -21,6 +22,7 @@ export default function ChatPage() {
   const [titleValue, setTitleValue] = useState('');
   const [focusInputAfterSend, setFocusInputAfterSend] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const SCROLL_TO_BOTTOM_THRESHOLD = 100;
 
   const { sendMessage, sendInterrupt, isStreaming, lastError, connect, connected } = useChatWebSocket(chatId, {
@@ -243,6 +245,18 @@ export default function ChatPage() {
     }
   };
 
+  const handleDeleteConfirm = async () => {
+    if (!chatId) return;
+    setError(null);
+    try {
+      await deleteChat(chatId);
+      setShowDeleteConfirm(false);
+      navigate('/chat', { replace: true });
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (!chatId) {
     navigate('/chat', { replace: true });
     return null;
@@ -276,6 +290,14 @@ export default function ChatPage() {
               aria-label="Rename chat"
             >
               ✎
+            </button>
+            <button
+              type="button"
+              className="chat-title-delete"
+              onClick={() => setShowDeleteConfirm(true)}
+              aria-label="Delete chat"
+            >
+              🗑
             </button>
           </h1>
         )}
@@ -384,6 +406,17 @@ export default function ChatPage() {
         </button>
       </form>
       </div>
+      {showDeleteConfirm && (
+        <ConfirmModal
+          title="Delete chat?"
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          danger
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

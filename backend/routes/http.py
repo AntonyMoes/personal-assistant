@@ -125,6 +125,15 @@ async def update_chat(request: web.Request) -> web.Response:
     return web.json_response(_chat_to_json(updated))
 
 
+async def delete_chat(request: web.Request) -> web.Response:
+    chat_id = request.match_info["chat_id"]
+    store = request.app["chat_store"]
+    ok = await store.delete_chat(chat_id)
+    if not ok:
+        return web.json_response({"error": "Not found"}, status=404)
+    return web.Response(status=204)
+
+
 async def list_memories(request: web.Request) -> web.Response:
     store = request.app["memory_store"]
     user_id = request.app["config"].app.default_user_id
@@ -219,6 +228,7 @@ def setup_http_routes(app: web.Application) -> None:
     app.router.add_get("/chats/{chat_id}", get_chat)
     app.router.add_post("/chats", create_chat)
     app.router.add_patch("/chats/{chat_id}", update_chat)
+    app.router.add_delete("/chats/{chat_id}", delete_chat)
     app.router.add_get("/memories", list_memories)
     app.router.add_get("/memories/{memory_id}", get_memory)
     app.router.add_post("/memories", create_memory)

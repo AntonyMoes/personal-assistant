@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listChats, createChat, updateChat } from '../api/chats';
+import { listChats, createChat, updateChat, deleteChat } from '../api/chats';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function ChatListPage() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function ChatListPage() {
   const [error, setError] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
+  const [deleteConfirmChatId, setDeleteConfirmChatId] = useState(null);
 
   const loadChats = async () => {
     setLoading(true);
@@ -51,6 +53,18 @@ export default function ChatListPage() {
       const updated = await updateChat(renamingId, { title: renameValue.trim() || 'New chat' });
       setChats((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       setRenamingId(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmChatId) return;
+    setError(null);
+    try {
+      await deleteChat(deleteConfirmChatId);
+      setChats((prev) => prev.filter((c) => c.id !== deleteConfirmChatId));
+      setDeleteConfirmChatId(null);
     } catch (e) {
       setError(e.message);
     }
@@ -102,12 +116,31 @@ export default function ChatListPage() {
                   >
                     ✎
                   </button>
+                  <button
+                    type="button"
+                    className="chat-list-delete"
+                    onClick={() => setDeleteConfirmChatId(chat.id)}
+                    aria-label="Delete chat"
+                  >
+                    🗑
+                  </button>
                 </>
               )}
             </li>
           ))
         )}
       </ul>
+      {deleteConfirmChatId && (
+        <ConfirmModal
+          title="Delete chat?"
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          danger
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteConfirmChatId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -100,6 +100,30 @@ input, textarea {
 .btn-primary { background: #1976d2; color: #fff; border-color: #1976d2; }
 .btn-primary:hover:not(:disabled) { background: #1565c0; }
 .btn-small { font-size: 0.85rem; padding: 0.25rem 0.5rem; }
+.btn-danger { background: #c62828; color: #fff; border-color: #c62828; }
+.btn-danger:hover:not(:disabled) { background: #b71c1c; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 1.25rem;
+  min-width: 280px;
+  max-width: 90vw;
+}
+.modal-title { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.modal-message { margin: 0 0 1rem; color: #b0b0b0; font-size: 0.95rem; }
+.modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
 
 /* Chat list */
 .chat-list-page { max-width: 480px; }
@@ -129,6 +153,14 @@ input, textarea {
   opacity: 0.7;
 }
 .chat-list-rename:hover { opacity: 1; }
+.chat-list-delete {
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: #808080;
+  opacity: 0.7;
+}
+.chat-list-delete:hover { opacity: 1; color: #ef5350; }
 .chat-rename-form { flex: 1; }
 .chat-rename-input {
   width: 100%;
@@ -179,6 +211,15 @@ input, textarea {
   opacity: 0.7;
 }
 .chat-title-edit:hover { opacity: 1; }
+.chat-title-delete {
+  padding: 0.2rem;
+  background: none;
+  border: none;
+  color: #808080;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+.chat-title-delete:hover { opacity: 1; color: #ef5350; }
 .chat-title-form { flex: 1; min-width: 0; }
 .chat-title-input {
   width: 100%;

@@ -44,3 +44,8 @@ export async function updateChat(chatId, body) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export async function deleteChat(chatId) {
+  const res = await fetch(`${API_BASE}/chats/${chatId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await res.text());
+}
