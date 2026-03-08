@@ -16,6 +16,13 @@
 - [ ] Enforce model switch per chat only when idle: track active stream per chat; reject PATCH /chats/{id} (model change) while streaming (see architecture §3).
 - [ ] Optional: Auto-set chat title from first message when chat still has default title (e.g. truncate first user message or short model summary; see architecture).
 - [ ] Optional: Wire tools into orchestration (tool_call → preview → permission_decision → execute → tool_result; see architecture §4).
+- [x] **Obsidian vault tool**: read, search (keyword), backlinks, list_by_tag, write; config `app.obsidian_vault_path`; capabilities OBSIDIAN_READ, OBSIDIAN_MODIFY (`backend/tools/obsidian.py`).
+- [ ] **Obsidian tool → RAG** (semantic retrieval over vault):
+  - [ ] **Indexing pipeline**: Chunk vault notes (by heading, token count, or fixed size); embed chunks via `embedder`; upsert into `embedding_store` (namespace e.g. `obsidian`) with metadata (note path, chunk index). Stable chunk IDs (e.g. `{path}#{index}`) so a note’s chunks can be replaced or removed when the note changes (by us or externally).
+  - [ ] **Semantic search**: New action (e.g. `semantic_search`) or `search(..., use_semantic=True)` that embeds the query, runs `embedding_store.search()`, returns matching note paths (and optional snippets) so the model can read full notes. Use `context.embedder` and `context.embedding_store`.
+  - [ ] **Index refresh**: When to (re)index: lazy on first semantic search; on vault write/delete from the tool (invalidate that note’s chunks); explicit “index vault” / “reindex” action; optionally file watcher or periodic refresh. See “External vault updates” below.
+  - [ ] **Chunk strategy**: Decide split strategy (e.g. by `##` headers, token windows, overlap) and metadata (path, section title, position) for useful model references. Design so re-chunking after external edits is straightforward (e.g. delete all chunks for path, then re-index).
+  - [ ] **External vault updates**: The vault can be edited outside the tool (e.g. user changes notes in Obsidian). Index can become stale. Handle by: (1) detecting changes (file watcher on vault dir, or mtime/hash when running semantic search or index), (2) invalidating only affected note’s chunks (delete by path or chunk-id prefix) and re-indexing that note, (3) optionally periodic full or incremental re-index. Chunk IDs and “chunks per path” design must support replace/delete by path so external edits don’t require full re-index every time.
 - [ ] **File upload in chat**: Allow users to attach/upload files to chat messages; store and reference in message payload.
 - [ ] **File handling for models**: Support file inputs for the model (e.g. image/document understanding, attachments in context).
 - [x] Add tests for backend components (subtasks; tick when done):
@@ -31,3 +38,4 @@
   - [ ] OpenAI ModelProvider.
   - [x] Chat orchestration (stub provider; stream + persist + interrupt).
   - [ ] Tools: remember, forget (call, preview, upsert/delete by key; with in-memory store).
+  - [x] Obsidian tool (read, search, backlinks, list_by_tag, write; tmp_path vault in tests).

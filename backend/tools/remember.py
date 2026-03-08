@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.interfaces.tools import Capability, ToolContext, ToolPreview, ToolResult
+from backend.interfaces.tools import Capability, ToolContext, ToolPreview, ToolResult, Tool
 
 
-class RememberTool:
+class RememberTool(Tool):
     """
     Tool the model can call when the user says to remember something, or when it learns
     a preference/fact worth storing. Uses the same preview-and-execute flow as other tools;

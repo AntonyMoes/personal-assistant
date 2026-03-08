@@ -30,7 +30,7 @@ from backend.storage import (
     create_embedding_store,
     create_memory_store,
 )
-from backend.tools import ForgetTool, RememberTool
+from backend.tools import ForgetTool, ObsidianTool, RememberTool
 
 
 def create_app(config_path: str | None = None) -> web.Application:
@@ -44,7 +44,8 @@ def create_app(config_path: str | None = None) -> web.Application:
     app["memory_store"] = create_memory_store(config.storage)
     app["embedding_store"] = create_embedding_store(config.storage)
     app["model_provider"] = create_model_provider(config.model)
-    app["tools"] = [RememberTool(), ForgetTool()]
+    vault_path = getattr(config.app, "obsidian_vault_path", "") or ""
+    app["tools"] = [RememberTool(), ForgetTool(), ObsidianTool(vault_path=vault_path)]
     setup_http_routes(app)
     setup_ws_routes(app)
     return app

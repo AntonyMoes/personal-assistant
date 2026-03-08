@@ -5,8 +5,10 @@ server:
   port: 8765
 
 # Default user id when no auth is used (single-user mode).
+# obsidian_vault_path: path to Obsidian vault root (optional; for obsidian tool).
 app:
   default_user_id: "default"
+  # obsidian_vault_path: "path/to/vault"
 
 # Storage: backend "memory" (default) or "file". If "file", chats and memories persist to disk.
 storage:

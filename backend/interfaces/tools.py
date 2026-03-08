@@ -46,7 +46,9 @@ class ToolContext:
     user_id: str
     chat_id: str | None
     memory_store: Any = None  # MemoryStore protocol; None if not available
-    # Optional: embedder, embedding_store, etc. can be injected by the runner
+    # For RAG/semantic search: embedding_store (vector store), embedder (embed(texts) -> vectors)
+    embedding_store: Any = None
+    embedder: Any = None  # object with async embed(texts: list[str]) -> list[list[float]]
 
 
 class Tool(Protocol):

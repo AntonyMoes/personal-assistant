@@ -53,7 +53,7 @@ class ChatRequest:
 class ModelProvider(Protocol):
     """Swappable LLM provider (OpenAI, local Ollama/vLLM, etc.)."""
 
-    async def stream_chat(self, request: ChatRequest) -> AsyncIterator[ModelEvent]:
+    def stream_chat(self, request: ChatRequest) -> AsyncIterator[ModelEvent]:
         """Stream chat completion events (tokens, reasoning, tool calls, etc.)."""
         ...
 

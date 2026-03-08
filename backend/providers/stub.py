@@ -5,15 +5,15 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from backend.interfaces.model import (
-    ChatMessage,
     ChatRequest,
     ModelEvent,
     ModelEventType,
+    ModelProvider,
 )
 from backend.config import PROVIDER_STUB
 
 
-class StubModelProvider:
+class StubModelProvider(ModelProvider):
     """Yields a simple token stream then done. No tools, no real LLM."""
 
     name = PROVIDER_STUB

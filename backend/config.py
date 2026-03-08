@@ -27,6 +27,8 @@ class ServerConfig:
 @dataclass
 class AppConfig:
     default_user_id: str = "default"
+    # Optional path to Obsidian vault root (for obsidian tool). Empty = tool disabled.
+    obsidian_vault_path: str = ""
 
 
 @dataclass
@@ -81,10 +83,19 @@ def _dict_to_server(data: dict[str, Any] | None) -> ServerConfig:
     )
 
 
-def _dict_to_app(data: dict[str, Any] | None) -> AppConfig:
+def _dict_to_app(data: dict[str, Any] | None, base: Path | None = None) -> AppConfig:
     if not data:
         return AppConfig()
-    return AppConfig(default_user_id=str(data.get("default_user_id", "default")))
+    vault = data.get("obsidian_vault_path") or ""
+    if isinstance(vault, str) and vault.strip() and base is not None:
+        p = Path(vault.strip())
+        if not p.is_absolute():
+            p = (base / p).resolve()
+        vault = str(p)
+    return AppConfig(
+        default_user_id=str(data.get("default_user_id", "default")),
+        obsidian_vault_path=vault if isinstance(vault, str) else "",
+    )
 
 
 def _dict_to_storage(data: dict[str, Any] | None, base: Path) -> StorageConfig:
@@ -145,7 +156,7 @@ def load_config(config_path: str | Path | None = None) -> Config:
     raw = _substitute_env(raw)
     return Config(
         server=_dict_to_server(raw.get("server")),
-        app=_dict_to_app(raw.get("app")),
+        app=_dict_to_app(raw.get("app"), base),
         storage=_dict_to_storage(raw.get("storage"), base),
         model=_dict_to_model(raw.get("model")),
         permissions=_dict_to_permissions(raw.get("permissions")),

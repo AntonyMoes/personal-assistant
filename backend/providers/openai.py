@@ -13,6 +13,7 @@ from backend.interfaces.model import (
     ChatRequest,
     ModelEvent,
     ModelEventType,
+    ModelProvider,
 )
 from backend.config import PROVIDER_OPENAI
 
@@ -36,7 +37,7 @@ def _message_to_openai(m: ChatMessage) -> dict[str, Any]:
     return out
 
 
-class OpenAIModelProvider:
+class OpenAIModelProvider(ModelProvider):
     """OpenAI API provider: stream_chat, embed, list_models."""
 
     name = PROVIDER_OPENAI

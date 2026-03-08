@@ -42,6 +42,7 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
                             memory_store=app.get("memory_store"),
                             user_id=config.app.default_user_id,
                             tools=app.get("tools") or [],
+                            embedding_store=app.get("embedding_store"),
                         )
                     elif msg_type == "permission_decision":
                         # No tools yet; ack only

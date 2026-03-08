@@ -6,6 +6,7 @@ import asyncio
 import json
 from typing import Any
 
+from backend.interfaces import ModelProvider
 from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType
 from backend.interfaces.tools import ToolContext
 from backend.ws_schema import (
@@ -80,11 +81,12 @@ async def _run_stream(
     user_content: str,
     *,
     chat_store,
-    model_provider,
+    model_provider: ModelProvider,
     config,
     memory_store=None,
     user_id: str | None = None,
     tools: list | None = None,
+    embedding_store=None,
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
@@ -168,6 +170,8 @@ async def _run_stream(
             user_id=user_id or config.app.default_user_id,
             chat_id=chat_id,
             memory_store=memory_store,
+            embedding_store=embedding_store,
+            embedder=model_provider.embed
         )
         tool_results: list[tuple[str, str, bool]] = []  # (tool_call_id, content, success)
         for tc in tool_calls_this_turn:
@@ -241,12 +245,13 @@ async def run_stream_with_interrupt(
     user_content: str,
     *,
     chat_store,
-    model_provider,
+    model_provider: ModelProvider,
     config,
     stream_task_ref: list,
     memory_store=None,
     user_id: str | None = None,
     tools: list | None = None,
+    embedding_store=None,
 ) -> None:
     """
     Run _run_stream in a task; store the task in stream_task_ref so the WS handler can cancel it on interrupt.
@@ -262,6 +267,7 @@ async def run_stream_with_interrupt(
             memory_store=memory_store,
             user_id=user_id,
             tools=tools,
+            embedding_store=embedding_store,
         ),
     )
     stream_task_ref.append(task)

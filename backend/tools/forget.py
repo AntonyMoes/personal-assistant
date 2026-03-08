@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.interfaces.tools import Capability, ToolContext, ToolPreview, ToolResult
+from backend.interfaces.tools import Capability, ToolContext, ToolPreview, ToolResult, Tool
 
 
-class ForgetTool:
+class ForgetTool(Tool):
     """
     Tool the model can call when the user asks to forget something or when a memory
     is no longer accurate/relevant. Deletes by key (one memory per key per user).
