@@ -16,6 +16,7 @@ class ObsidianAction(StrEnum):
     BACKLINKS = "backlinks"
     LIST_BY_TAG = "list_by_tag"
     WRITE = "write"
+    DELETE = "delete"
 
 
 def _vault_root_from_path(vault_path: str) -> Path | None:
@@ -91,9 +92,9 @@ class ObsidianTool(Tool):
     def description(self) -> str:
         return (
             "Interact with the user's Obsidian vault. Use when the user asks about their notes, "
-            "to find or read a note, see what links to a note (backlinks), list notes by tag, or to create/edit a note. "
+            "to find or read a note, see what links to a note (backlinks), list notes by tag, create/edit a note, or delete a note. "
             "Actions: read (get note content), search (keyword search), backlinks (notes linking to this one), "
-            "list_by_tag (notes with a tag), write (create or overwrite a note)."
+            "list_by_tag (notes with a tag), write (create or overwrite a note), delete (remove a note file)."
         )
 
     def args_schema(self) -> dict[str, Any]:
@@ -107,7 +108,7 @@ class ObsidianTool(Tool):
                 },
                 "path": {
                     "type": "string",
-                    "description": "Note path or name (e.g. 'My Note' or 'folder/note'). For read, backlinks, write.",
+                    "description": "Note path or name (e.g. 'My Note' or 'folder/note'). For read, backlinks, write, delete.",
                 },
                 "query": {
                     "type": "string",
@@ -144,6 +145,8 @@ class ObsidianTool(Tool):
             summary += f" tag=#{args.get('tag', '')}"
         if action == ObsidianAction.WRITE.value:
             summary += " (create/overwrite note)"
+        if action == ObsidianAction.DELETE.value:
+            summary += " (remove note file)"
         return ToolPreview(
             tool_name=self.name,
             title=f"Obsidian {action}",
@@ -172,6 +175,8 @@ class ObsidianTool(Tool):
             return await self._list_by_tag(vault, args)
         if action == ObsidianAction.WRITE:
             return await self._write(vault, args)
+        if action == ObsidianAction.DELETE:
+            return await self._delete(vault, args)
         return ToolResult(success=False, content=f"Unknown action: {action!r}")
 
     async def _read(self, vault: Path, args: dict[str, Any]) -> ToolResult:
@@ -322,4 +327,20 @@ class ObsidianTool(Tool):
             success=True,
             content=f"Wrote note: {_note_name_from_path(vault, note_path)}",
             data={"path": _note_name_from_path(vault, note_path)},
+        )
+
+    async def _delete(self, vault: Path, args: dict[str, Any]) -> ToolResult:
+        path_arg = args.get("path") or ""
+        note_path = _resolve_note_path(vault, path_arg, should_exist=True)
+        if not note_path:
+            return ToolResult(success=False, content="Missing or invalid 'path' for delete, or note does not exist.")
+        try:
+            note_path.unlink()
+        except Exception as e:
+            return ToolResult(success=False, content=f"Failed to delete note: {e}")
+        name = _note_name_from_path(vault, note_path)
+        return ToolResult(
+            success=True,
+            content=f"Deleted note: {name}",
+            data={"path": name},
         )

@@ -34,7 +34,7 @@ def test_obsidian_tool_args_schema(tool_with_vault):
     schema = tool_with_vault.args_schema()
     assert schema["type"] == "object"
     assert "action" in schema["properties"]
-    assert schema["properties"]["action"]["enum"] == ["read", "search", "backlinks", "list_by_tag", "write"]
+    assert schema["properties"]["action"]["enum"] == ["read", "search", "backlinks", "list_by_tag", "write", "delete"]
     assert "action" in schema["required"]
 
 
@@ -145,6 +145,23 @@ async def test_obsidian_write_then_read(tool_with_vault, no_vault_ctx, tmp_path)
     result = await tool_with_vault.call({"action": "read", "path": "Wrote"}, no_vault_ctx)
     assert result.success is True
     assert result.content == "Content here."
+
+
+@pytest.mark.asyncio
+async def test_obsidian_delete(tool_with_vault, no_vault_ctx, tmp_path):
+    (tmp_path / "ToDelete.md").write_text("Will be removed.", encoding="utf-8")
+    assert (tmp_path / "ToDelete.md").is_file()
+    result = await tool_with_vault.call({"action": "delete", "path": "ToDelete"}, no_vault_ctx)
+    assert result.success is True
+    assert "Deleted note" in result.content
+    assert not (tmp_path / "ToDelete.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_obsidian_delete_missing_note(tool_with_vault, no_vault_ctx):
+    result = await tool_with_vault.call({"action": "delete", "path": "Nonexistent"}, no_vault_ctx)
+    assert result.success is False
+    assert "path" in result.content.lower() or "not found" in result.content.lower() or "does not exist" in result.content.lower()
 
 
 @pytest.mark.asyncio
