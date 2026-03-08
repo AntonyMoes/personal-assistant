@@ -25,7 +25,7 @@ export default function ChatPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const SCROLL_TO_BOTTOM_THRESHOLD = 100;
 
-  const { sendMessage, sendInterrupt, isStreaming, lastError, connect, connected } = useChatWebSocket(chatId, {
+  const { sendMessage, sendInterrupt, isStreaming, lastError } = useChatWebSocket(chatId, {
     onToken: (text) => {
       setMessages((prev) => {
         const next = [...prev];
@@ -116,11 +116,6 @@ export default function ChatPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [chatId]);
-
-  useEffect(() => {
-    if (chatId) connect();
-    return () => {};
-  }, [chatId, connect]);
 
   useEffect(() => {
     if (lastError) setError(lastError);
