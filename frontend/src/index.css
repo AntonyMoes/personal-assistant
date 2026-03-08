@@ -353,5 +353,51 @@ input, textarea {
 }
 .chat-input::placeholder { color: #666; }
 
-.memory-list { padding-left: 1.5rem; color: #e0e0e0; }
-.memory-list li { margin: 0.25rem 0; }
+.memories-page { max-width: 560px; }
+.memory-list { list-style: none; padding: 0; margin: 0; color: #e0e0e0; }
+.memory-list-empty { padding: 1rem; color: #808080; }
+.memory-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #333;
+}
+.memory-list-key {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #b0b0b0;
+  min-width: 6rem;
+}
+.memory-list-content { flex: 1; min-width: 0; word-break: break-word; }
+.memory-list-edit,
+.memory-list-delete {
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: #808080;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.memory-list-edit:hover { opacity: 1; }
+.memory-list-delete:hover { opacity: 1; color: #ef5350; }
+.memory-edit-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.memory-edit-form .memory-list-key { margin-bottom: 0.25rem; }
+.memory-edit-content {
+  width: 100%;
+  padding: 0.5rem;
+  font: inherit;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #e0e0e0;
+  resize: vertical;
+  min-height: 60px;
+}
+.memory-edit-actions { display: flex; gap: 0.5rem; }

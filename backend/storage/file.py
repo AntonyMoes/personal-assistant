@@ -294,6 +294,7 @@ class FileSystemMemoryStore(MemoryStore):
             if d.get("id") == memory_id:
                 index["memories"][i]["content"] = content.strip()
                 index["memories"][i]["updated_at"] = now_iso()
+                self._write_index(index)
                 return _dict_to_memory(index["memories"][i])
         return None
 
