@@ -23,11 +23,21 @@ export default function ChatPage() {
   const [focusInputAfterSend, setFocusInputAfterSend] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [permissionExpanded, setPermissionExpanded] = useState(() => new Set());
   const SCROLL_TO_BOTTOM_THRESHOLD = 100;
+
+  const togglePermissionExpanded = (clientId) => {
+    setPermissionExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
+  };
   const INPUT_MIN_HEIGHT = 44;
   const INPUT_MAX_HEIGHT = 200;
 
-  const { sendMessage, sendInterrupt, isStreaming, lastError } = useChatWebSocket(chatId, {
+  const { sendMessage, sendInterrupt, sendPermissionDecision, isStreaming, lastError } = useChatWebSocket(chatId, {
     onToken: (text) => {
       setMessages((prev) => {
         const next = [...prev];
@@ -99,6 +109,27 @@ export default function ChatPage() {
         },
       ]);
     },
+    onPermissionRequest: (payload) => {
+      if (!payload?.tool_call_id) return;
+      setMessages((prev) => {
+        const alreadyHave = prev.some(
+          (m) => m.type === 'permission_request' && m.tool_call_id === payload.tool_call_id
+        );
+        if (alreadyHave) return prev;
+        return [
+          ...prev,
+          {
+            type: 'permission_request',
+            _clientId: `permission-${payload.tool_call_id}-${Date.now()}`,
+            tool_call_id: payload.tool_call_id,
+            tool_name: payload.name,
+            title: payload.title,
+            summary: payload.summary,
+            affected_resources: payload.affected_resources || [],
+          },
+        ];
+      });
+    },
     onError: (err) => setError(err),
   });
 
@@ -111,7 +142,11 @@ export default function ChatPage() {
       .then(([c, { messages: msgs }]) => {
         if (!cancelled) {
           setChat(c);
-          setMessages((msgs || []).map((m) => ({ role: m.role, content: m.content || '', streaming: false })));
+          const loaded = (msgs || []).map((m) => ({ role: m.role, content: m.content || '', streaming: false }));
+          setMessages((prev) => {
+            const inFlight = prev.filter((m) => m.type === 'permission_request');
+            return [...loaded, ...inFlight];
+          });
         }
       })
       .catch((e) => { if (!cancelled) setError(e.message); })
@@ -264,6 +299,18 @@ export default function ChatPage() {
     }
   };
 
+  const handlePermissionDecision = (clientId, toolCallId, allowed) => {
+    sendPermissionDecision(toolCallId, allowed);
+    skipNextScrollToBottomRef.current = true;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m._clientId === clientId && m.type === 'permission_request'
+          ? { ...m, permission_resolved: true, approved: allowed }
+          : m
+      )
+    );
+  };
+
   if (!chatId) {
     navigate('/chat', { replace: true });
     return null;
@@ -377,7 +424,76 @@ export default function ChatPage() {
                 Roll back
               </button>
             </div>
-          ) : (
+          ) : m.type === 'permission_request' ? (() => {
+            const resolved = m.permission_resolved;
+            const expanded = !resolved || permissionExpanded.has(m._clientId);
+            const summaryLine = [
+              resolved ? (m.approved ? 'Allowed' : 'Denied') : 'Pending',
+              m.title || m.tool_name || 'Tool request',
+              m.summary ? `— ${m.summary}` : '',
+            ].filter(Boolean).join(' ');
+            return (
+              <div
+                key={m._clientId || i}
+                className={`message message-memory message-permission-request ${resolved ? 'permission-resolved-card' : ''} ${resolved && m.approved ? 'permission-approved' : ''} ${resolved && !m.approved ? 'permission-denied' : ''} ${!expanded ? 'permission-collapsed' : ''}`}
+              >
+                {!expanded ? (
+                  <button
+                    type="button"
+                    className="permission-collapsed-summary"
+                    onClick={() => togglePermissionExpanded(m._clientId)}
+                    aria-expanded="false"
+                  >
+                    <span className="permission-collapsed-chevron">▶</span>
+                    <span className="permission-collapsed-text">{summaryLine}</span>
+                  </button>
+                ) : (
+                  <>
+                    <div className="permission-request-preview">
+                      <button
+                        type="button"
+                        className="permission-expand-toggle"
+                        onClick={() => resolved && togglePermissionExpanded(m._clientId)}
+                        aria-expanded="true"
+                        aria-label={resolved ? 'Collapse' : undefined}
+                        disabled={!resolved}
+                      >
+                        {resolved && <span className="permission-chevron">▼</span>}
+                        <strong>{m.title || m.tool_name || 'Tool request'}</strong>
+                      </button>
+                      {m.summary && <p className="permission-summary">{m.summary}</p>}
+                      {m.affected_resources?.length > 0 && (
+                        <p className="permission-resources">Resources: {m.affected_resources.join(', ')}</p>
+                      )}
+                      {resolved && (
+                        <p className="permission-resolved">
+                          {m.approved ? 'Allowed' : 'Denied'}
+                        </p>
+                      )}
+                    </div>
+                    {!resolved && (
+                      <div className="permission-request-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => handlePermissionDecision(m._clientId, m.tool_call_id, true)}
+                        >
+                          Allow
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => handlePermissionDecision(m._clientId, m.tool_call_id, false)}
+                        >
+                          Deny
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })() : (
             <div key={i} className={`message message-${m.role}`}>
               <div className="message-content">{m.content || '\u00a0'}</div>
               {m.reasoning && <div className="message-reasoning">{m.reasoning}</div>}

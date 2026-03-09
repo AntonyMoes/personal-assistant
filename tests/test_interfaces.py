@@ -16,6 +16,7 @@ def test_chat_record():
         archived=False,
         created_at="2024-01-01T00:00:00Z",
         updated_at="2024-01-01T00:00:00Z",
+        responses=[]
     )
     assert r.title == "Chat"
     assert r.model == "gpt-4o"

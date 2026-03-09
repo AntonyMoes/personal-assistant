@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
-from typing import Any
 
+from backend.interfaces import ChatMessage
 from backend.interfaces.storage import (
     ChatId,
     ChatRecord,
@@ -14,8 +14,9 @@ from backend.interfaces.storage import (
     MemoryId,
     MemoryRecord,
     MemoryStore,
-    UserId,
+    UserId, ResponseInProgressRecord, ResponseInProgressId, PendingToolCall,
 )
+from backend.serialization import chat_message_from_dict, chat_message_to_dict
 from backend.utils import now_iso
 
 
@@ -31,6 +32,24 @@ def _chat_to_dict(c: ChatRecord) -> dict:
         "archived": c.archived,
         "created_at": c.created_at,
         "updated_at": c.updated_at,
+        "responses": [_response_to_dict(r) for r in c.responses],
+    }
+
+
+def _response_to_dict(r: ResponseInProgressRecord) -> dict:
+    return {
+        "id": r.id,
+        "pending_content": r.pending_content,
+        "internal_messages_context": [chat_message_to_dict(m) for m in r.internal_messages_context],
+        "pending_tool_calls": [_tool_call_to_dict(tc) for tc in r.pending_tool_calls],
+    }
+
+def _tool_call_to_dict(tc: PendingToolCall) -> dict:
+    return {
+        "id": tc.id,
+        "tool_name": tc.tool_name,
+        "args": tc.args,
+        "permission": tc.permission,
     }
 
 
@@ -43,9 +62,25 @@ def _dict_to_chat(d: dict) -> ChatRecord:
         archived=bool(d.get("archived", False)),
         created_at=d["created_at"],
         updated_at=d["updated_at"],
-        message_ids=None,
+        responses=[_dict_to_response(rd) for rd in d["responses"]]
     )
 
+
+def _dict_to_response(d: dict) -> ResponseInProgressRecord:
+    return ResponseInProgressRecord(
+        id=d["id"],
+        pending_content=d["pending_content"],
+        internal_messages_context=[chat_message_from_dict(md) for md in d["internal_messages_context"]],
+        pending_tool_calls=[_dict_to_tool_call(tcd) for tcd in d["pending_tool_calls"]],
+    )
+
+def _dict_to_tool_call(d: dict) -> PendingToolCall:
+    return PendingToolCall(
+        id=d["id"],
+        tool_name=d["tool_name"],
+        args=d["args"],
+        permission=d["permission"],
+    )
 
 class FileSystemChatStore(ChatStore):
     """ChatStore that persists to disk: index of chats + one file per chat for messages."""
@@ -67,28 +102,28 @@ class FileSystemChatStore(ChatStore):
     def _messages_path(self, chat_id: ChatId) -> Path:
         return self._root / f"{chat_id}.json"
 
-    def _read_messages(self, chat_id: ChatId) -> list[dict[str, Any]]:
+    def _read_messages(self, chat_id: ChatId) -> list[ChatMessage]:
         path = self._messages_path(chat_id)
         if not path.exists():
             return []
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw) if raw.strip() else {}
-        return data.get("messages", [])
+        return [chat_message_from_dict(d) for d in data.get("messages", [])]
 
-    def _write_messages(self, chat_id: ChatId, messages: list[dict[str, Any]]) -> None:
+    def _write_messages(self, chat_id: ChatId, messages: list[ChatMessage]) -> None:
         self._messages_path(chat_id).write_text(
-            json.dumps({"messages": messages}, indent=2), encoding="utf-8"
+            json.dumps({"messages": [chat_message_to_dict(m) for m in messages]}, indent=2), encoding="utf-8"
         )
 
     async def list_chats(
-        self,
-        user_id: UserId,
-        *,
-        archived: bool | None = None,
-        sort: str = "updated_at",
-        order: str = "desc",
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            archived: bool | None = None,
+            sort: str = "updated_at",
+            order: str = "desc",
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[ChatRecord]:
         index = self._read_index()
         chats = [_dict_to_chat(d) for d in index.get("chats", []) if d.get("user_id") == user_id]
@@ -101,7 +136,7 @@ class FileSystemChatStore(ChatStore):
             chats.sort(key=lambda c: c.created_at, reverse=reverse)
         elif sort == "title":
             chats.sort(key=lambda c: c.title.lower(), reverse=reverse)
-        return chats[offset : offset + limit]
+        return chats[offset: offset + limit]
 
     async def get_chat(self, chat_id: ChatId) -> ChatRecord | None:
         index = self._read_index()
@@ -110,14 +145,33 @@ class FileSystemChatStore(ChatStore):
                 return _dict_to_chat(d)
         return None
 
-    async def get_chat_messages(self, chat_id: ChatId) -> list[dict[str, Any]]:
-        return self._read_messages(chat_id).copy()
+    def _set_chat(self, chat_id: ChatId, value: ChatRecord | None) -> bool:
+        index = self._read_index()
+        chats: list[dict] = index.setdefault("chats", [])
+        for i, d in enumerate(chats):
+            if d.get("id") == chat_id:
+                if value:
+                    chats[i] = _chat_to_dict(value)
+                else:
+                    chats.pop(i)
+                self._write_index(index)
+                return True
+
+        if value:
+            chats.append(_chat_to_dict(value))
+            self._write_index(index)
+            return True
+
+        return False
+
+    async def get_chat_messages(self, chat_id: ChatId) -> list[ChatMessage]:
+        return self._read_messages(chat_id)
 
     async def create_chat(
-        self,
-        user_id: UserId,
-        title: str,
-        model: str,
+            self,
+            user_id: UserId,
+            title: str,
+            model: str,
     ) -> ChatRecord:
         chat_id = uuid.uuid4().hex
         now = now_iso()
@@ -129,47 +183,31 @@ class FileSystemChatStore(ChatStore):
             archived=False,
             created_at=now,
             updated_at=now,
-            message_ids=[],
+            responses=[],
         )
-        index = self._read_index()
-        index.setdefault("chats", []).append(_chat_to_dict(record))
-        self._write_index(index)
+        self._set_chat(chat_id, record)
         self._write_messages(chat_id, [])
         return record
 
     async def update_chat(
-        self,
-        chat_id: ChatId,
-        *,
-        title: str | None = None,
-        model: str | None = None,
-        archived: bool | None = None,
+            self,
+            chat_id: ChatId,
+            *,
+            title: str | None = None,
+            model: str | None = None,
+            archived: bool | None = None,
     ) -> ChatRecord | None:
         record = await self.get_chat(chat_id)
         if not record:
             return None
-        new_title = title if title is not None else record.title
-        new_model = model if model is not None else record.model
-        new_archived = archived if archived is not None else record.archived
-        updated = ChatRecord(
-            id=record.id,
-            user_id=record.user_id,
-            title=new_title,
-            model=new_model,
-            archived=new_archived,
-            created_at=record.created_at,
-            updated_at=now_iso(),
-            message_ids=record.message_ids,
-        )
-        index = self._read_index()
-        for i, d in enumerate(index.get("chats", [])):
-            if d.get("id") == chat_id:
-                index["chats"][i] = _chat_to_dict(updated)
-                break
-        self._write_index(index)
-        return updated
+        record.title = title if title is not None else record.title
+        record.model = model if model is not None else record.model
+        record.archived = archived if archived is not None else record.archived
+        record.updated_at = now_iso()
+        self._set_chat(record.id, record)
+        return record
 
-    async def append_messages(self, chat_id: ChatId, messages: list[dict[str, Any]]) -> None:
+    async def append_messages(self, chat_id: ChatId, messages: list[ChatMessage]) -> None:
         if not messages:
             return
         record = await self.get_chat(chat_id)
@@ -178,20 +216,47 @@ class FileSystemChatStore(ChatStore):
         current = self._read_messages(chat_id)
         current.extend(messages)
         self._write_messages(chat_id, current)
-        index = self._read_index()
-        for i, d in enumerate(index.get("chats", [])):
-            if d.get("id") == chat_id:
-                index["chats"][i]["updated_at"] = now_iso()
-                break
-        self._write_index(index)
+        await self.update_chat(chat_id)
+
+    async def get_responses_in_progress(self, chat_id: ChatId) -> list[ResponseInProgressRecord]:
+        record = await self.get_chat(chat_id)
+        return record.responses if record else []
+
+    async def create_response_in_progress(self, chat_id: ChatId) -> ResponseInProgressRecord:
+        response_id = uuid.uuid4().hex
+        record = ResponseInProgressRecord(
+            id=response_id,
+            pending_content="",
+            internal_messages_context=[],
+            pending_tool_calls=[]
+        )
+        await self.set_response_in_progress(chat_id, response_id, record)
+        return record
+
+    async def set_response_in_progress(self, chat_id: ChatId, response_id: ResponseInProgressId,
+                                       value: ResponseInProgressRecord | None) -> None:
+        chat_record = await self.get_chat(chat_id)
+        if not chat_record:
+            return
+
+        response_record_idx: int | None = next(
+            (idx for (idx, record) in enumerate(chat_record.responses) if record.id == response_id), None)
+        if value is None:
+            if response_record_idx is not None:
+                chat_record.responses.pop(response_record_idx)
+        else:
+            if response_record_idx is not None:
+                chat_record.responses[response_record_idx] = value
+            else:
+                chat_record.responses.append(value)
+
+        self._set_chat(chat_record.id, chat_record)
 
     async def delete_chat(self, chat_id: ChatId) -> bool:
-        index = self._read_index()
-        before = len(index.get("chats", []))
-        index["chats"] = [d for d in index.get("chats", []) if d.get("id") != chat_id]
-        if len(index["chats"]) == before:
+        ok = self._set_chat(chat_id, None)
+        if not ok:
             return False
-        self._write_index(index)
+
         path = self._messages_path(chat_id)
         if path.exists():
             path.unlink()
@@ -241,16 +306,16 @@ class FileSystemMemoryStore(MemoryStore):
         self._index_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     async def list_memories(
-        self,
-        user_id: UserId,
-        *,
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[MemoryRecord]:
         index = self._read_index()
         items = [_dict_to_memory(d) for d in index.get("memories", []) if d.get("user_id") == user_id]
         items.sort(key=lambda m: m.updated_at, reverse=True)
-        return items[offset : offset + limit]
+        return items[offset: offset + limit]
 
     async def get_memory(self, memory_id: MemoryId) -> MemoryRecord | None:
         index = self._read_index()
@@ -268,10 +333,10 @@ class FileSystemMemoryStore(MemoryStore):
         return None
 
     async def create_memory(
-        self,
-        user_id: UserId,
-        key: str,
-        content: str,
+            self,
+            user_id: UserId,
+            key: str,
+            content: str,
     ) -> MemoryRecord:
         memory_id = uuid.uuid4().hex
         now = now_iso()

@@ -6,7 +6,7 @@ import math
 import uuid
 from typing import Any
 
-from backend.interfaces import EmbeddingStore
+from backend.interfaces import EmbeddingStore, ChatMessage
 from backend.interfaces.storage import (
     ChatId,
     ChatRecord,
@@ -14,7 +14,7 @@ from backend.interfaces.storage import (
     MemoryId,
     MemoryRecord,
     MemoryStore,
-    UserId,
+    UserId, ResponseInProgressId, ResponseInProgressRecord,
 )
 from backend.utils import now_iso
 
@@ -24,17 +24,17 @@ class InMemoryChatStore(ChatStore):
 
     def __init__(self) -> None:
         self._chats: dict[ChatId, ChatRecord] = {}
-        self._messages: dict[ChatId, list[dict[str, Any]]] = {}
+        self._messages: dict[ChatId, list[ChatMessage]] = {}
 
     async def list_chats(
-        self,
-        user_id: UserId,
-        *,
-        archived: bool | None = None,
-        sort: str = "updated_at",
-        order: str = "desc",
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            archived: bool | None = None,
+            sort: str = "updated_at",
+            order: str = "desc",
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[ChatRecord]:
         chats = [c for c in self._chats.values() if c.user_id == user_id]
         if archived is not None:
@@ -46,19 +46,19 @@ class InMemoryChatStore(ChatStore):
             chats.sort(key=lambda c: c.created_at, reverse=reverse)
         elif sort == "title":
             chats.sort(key=lambda c: c.title.lower(), reverse=reverse)
-        return chats[offset : offset + limit]
+        return chats[offset: offset + limit]
 
     async def get_chat(self, chat_id: ChatId) -> ChatRecord | None:
         return self._chats.get(chat_id)
 
-    async def get_chat_messages(self, chat_id: ChatId) -> list[dict[str, Any]]:
+    async def get_chat_messages(self, chat_id: ChatId) -> list[ChatMessage]:
         return self._messages.get(chat_id, []).copy()
 
     async def create_chat(
-        self,
-        user_id: UserId,
-        title: str,
-        model: str,
+            self,
+            user_id: UserId,
+            title: str,
+            model: str,
     ) -> ChatRecord:
         chat_id = uuid.uuid4().hex
         now = now_iso()
@@ -70,54 +70,68 @@ class InMemoryChatStore(ChatStore):
             archived=False,
             created_at=now,
             updated_at=now,
-            message_ids=[],
+            responses=[]
         )
         self._chats[chat_id] = record
         self._messages[chat_id] = []
         return record
 
     async def update_chat(
-        self,
-        chat_id: ChatId,
-        *,
-        title: str | None = None,
-        model: str | None = None,
-        archived: bool | None = None,
+            self,
+            chat_id: ChatId,
+            *,
+            title: str | None = None,
+            model: str | None = None,
+            archived: bool | None = None,
     ) -> ChatRecord | None:
         record = self._chats.get(chat_id)
         if not record:
             return None
-        new_title = title if title is not None else record.title
-        new_model = model if model is not None else record.model
-        new_archived = archived if archived is not None else record.archived
-        updated = ChatRecord(
-            id=record.id,
-            user_id=record.user_id,
-            title=new_title,
-            model=new_model,
-            archived=new_archived,
-            created_at=record.created_at,
-            updated_at=now_iso(),
-            message_ids=record.message_ids,
-        )
-        self._chats[chat_id] = updated
-        return updated
+        record.title = title if title is not None else record.title
+        record.model = model if model is not None else record.model
+        record.archived = archived if archived is not None else record.archived
+        record.updated_at = now_iso()
+        return record
 
-    async def append_messages(self, chat_id: ChatId, messages: list[dict[str, Any]]) -> None:
-        if chat_id in self._messages:
-            self._messages[chat_id].extend(messages)
+    async def append_messages(self, chat_id: ChatId, messages: list[ChatMessage]) -> None:
+        messages_list = self._messages.get(chat_id)
+        if messages_list is not None:
+            messages_list.extend(messages)
+        chat_record = self._chats.get(chat_id)
+        if chat_record:
+            chat_record.updated_at = now_iso()
+
+    async def get_responses_in_progress(self, chat_id: ChatId) -> list[ResponseInProgressRecord]:
         record = self._chats.get(chat_id)
-        if record:
-            self._chats[chat_id] = ChatRecord(
-                id=record.id,
-                user_id=record.user_id,
-                title=record.title,
-                model=record.model,
-                archived=record.archived,
-                created_at=record.created_at,
-                updated_at=now_iso(),
-                message_ids=record.message_ids,
-            )
+        return record.responses if record else []
+
+    async def create_response_in_progress(self, chat_id: ChatId) -> ResponseInProgressRecord:
+        response_id = uuid.uuid4().hex
+        record = ResponseInProgressRecord(
+            id=response_id,
+            pending_content="",
+            internal_messages_context=[],
+            pending_tool_calls=[]
+        )
+        await self.set_response_in_progress(chat_id, response_id, record)
+        return record
+
+    async def set_response_in_progress(self, chat_id: ChatId, response_id: ResponseInProgressId,
+                                       value: ResponseInProgressRecord | None) -> None:
+        chat_record = self._chats.get(chat_id)
+        if not chat_record:
+            return
+
+        response_record_idx: int | None = next(
+            (idx for (idx, record) in enumerate(chat_record.responses) if record.id == response_id), None)
+        if value is None:
+            if response_record_idx is not None:
+                chat_record.responses.pop(response_record_idx)
+        else:
+            if response_record_idx is not None:
+                chat_record.responses[response_record_idx] = value
+            else:
+                chat_record.responses.append(value)
 
     async def delete_chat(self, chat_id: ChatId) -> bool:
         if chat_id not in self._chats:
@@ -134,15 +148,15 @@ class InMemoryMemoryStore(MemoryStore):
         self._memories: dict[MemoryId, MemoryRecord] = {}
 
     async def list_memories(
-        self,
-        user_id: UserId,
-        *,
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[MemoryRecord]:
         items = [m for m in self._memories.values() if m.user_id == user_id]
         items.sort(key=lambda m: m.updated_at, reverse=True)
-        return items[offset : offset + limit]
+        return items[offset: offset + limit]
 
     async def get_memory(self, memory_id: MemoryId) -> MemoryRecord | None:
         return self._memories.get(memory_id)
@@ -155,10 +169,10 @@ class InMemoryMemoryStore(MemoryStore):
         return None
 
     async def create_memory(
-        self,
-        user_id: UserId,
-        key: str,
-        content: str,
+            self,
+            user_id: UserId,
+            key: str,
+            content: str,
     ) -> MemoryRecord:
         memory_id = uuid.uuid4().hex
         now = now_iso()
@@ -177,16 +191,9 @@ class InMemoryMemoryStore(MemoryStore):
         record = self._memories.get(memory_id)
         if not record:
             return None
-        updated = MemoryRecord(
-            id=record.id,
-            user_id=record.user_id,
-            key=record.key,
-            content=content.strip(),
-            created_at=record.created_at,
-            updated_at=now_iso(),
-        )
-        self._memories[memory_id] = updated
-        return updated
+        record.content = content.strip()
+        record.updated_at = now_iso()
+        return record
 
     async def delete_memory(self, memory_id: MemoryId) -> bool:
         if memory_id not in self._memories:
@@ -215,23 +222,23 @@ class InMemoryEmbeddingStore(EmbeddingStore):
         self._by_namespace: dict[str, dict[str, tuple[list[float], dict[str, Any]]]] = {}
 
     async def upsert(
-        self,
-        namespace: str,
-        id: str,
-        vector: list[float],
-        metadata: dict[str, Any] | None = None,
+            self,
+            namespace: str,
+            id: str,
+            vector: list[float],
+            metadata: dict[str, Any] | None = None,
     ) -> None:
         if namespace not in self._by_namespace:
             self._by_namespace[namespace] = {}
         self._by_namespace[namespace][id] = (list(vector), metadata.copy() if metadata else {})
 
     async def search(
-        self,
-        namespace: str,
-        query_vector: list[float],
-        *,
-        k: int = 10,
-        filter_metadata: dict[str, Any] | None = None,
+            self,
+            namespace: str,
+            query_vector: list[float],
+            *,
+            k: int = 10,
+            filter_metadata: dict[str, Any] | None = None,
     ) -> list[tuple[str, float, dict[str, Any]]]:
         items = self._by_namespace.get(namespace, {})
         if not items:

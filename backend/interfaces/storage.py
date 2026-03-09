@@ -5,10 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from backend.interfaces import ChatMessage
+
 # Type aliases for IDs
 ChatId = str
 MemoryId = str
 UserId = str
+ResponseInProgressId = str
+ToolCallId = str
 
 
 @dataclass
@@ -22,7 +26,25 @@ class ChatRecord:
     archived: bool
     created_at: str  # ISO datetime
     updated_at: str
-    message_ids: list[str] | None = None  # if messages stored separately
+    responses: list[ResponseInProgressRecord]
+
+
+@dataclass
+class ResponseInProgressRecord:
+    """A message response in progress"""
+
+    id: ResponseInProgressId
+    pending_content: str
+    internal_messages_context: list[ChatMessage]
+    pending_tool_calls: list[PendingToolCall]
+
+
+@dataclass
+class PendingToolCall:
+    id: ToolCallId
+    tool_name: str
+    args: dict
+    permission: bool | None = None
 
 
 @dataclass
@@ -41,43 +63,53 @@ class ChatStore(Protocol):
     """CRUD and list for chats. Message history may be part of chat or separate."""
 
     async def list_chats(
-        self,
-        user_id: UserId,
-        *,
-        archived: bool | None = None,
-        sort: str = "updated_at",
-        order: str = "desc",
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            archived: bool | None = None,
+            sort: str = "updated_at",
+            order: str = "desc",
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[ChatRecord]:
         ...
 
     async def get_chat(self, chat_id: ChatId) -> ChatRecord | None:
         ...
 
-    async def get_chat_messages(self, chat_id: ChatId) -> list[dict[str, Any]]:
+    async def get_chat_messages(self, chat_id: ChatId) -> list[ChatMessage]:
         """Return ordered messages for the chat (role, content, etc.)."""
         ...
 
     async def create_chat(
-        self,
-        user_id: UserId,
-        title: str,
-        model: str,
+            self,
+            user_id: UserId,
+            title: str,
+            model: str,
     ) -> ChatRecord:
         ...
 
     async def update_chat(
-        self,
-        chat_id: ChatId,
-        *,
-        title: str | None = None,
-        model: str | None = None,
-        archived: bool | None = None,
+            self,
+            chat_id: ChatId,
+            *,
+            title: str | None = None,
+            model: str | None = None,
+            archived: bool | None = None,
     ) -> ChatRecord | None:
         ...
 
-    async def append_messages(self, chat_id: ChatId, messages: list[dict[str, Any]]) -> None:
+    async def append_messages(self, chat_id: ChatId, messages: list[ChatMessage]) -> None:
+        ...
+
+    async def get_responses_in_progress(self, chat_id: ChatId) -> list[ResponseInProgressRecord]:
+        ...
+
+    async def create_response_in_progress(self, chat_id: ChatId) -> ResponseInProgressRecord:
+        ...
+
+    async def set_response_in_progress(self, chat_id: ChatId, response_id: ResponseInProgressId,
+                                       value: ResponseInProgressRecord | None) -> None:
         ...
 
     async def delete_chat(self, chat_id: ChatId) -> bool:
@@ -88,11 +120,11 @@ class MemoryStore(Protocol):
     """CRUD and list for memories."""
 
     async def list_memories(
-        self,
-        user_id: UserId,
-        *,
-        limit: int = 100,
-        offset: int = 0,
+            self,
+            user_id: UserId,
+            *,
+            limit: int = 100,
+            offset: int = 0,
     ) -> list[MemoryRecord]:
         ...
 
@@ -104,10 +136,10 @@ class MemoryStore(Protocol):
         ...
 
     async def create_memory(
-        self,
-        user_id: UserId,
-        key: str,
-        content: str,
+            self,
+            user_id: UserId,
+            key: str,
+            content: str,
     ) -> MemoryRecord:
         ...
 
@@ -122,21 +154,21 @@ class EmbeddingStore(Protocol):
     """Vector store for embeddings: upsert, search, delete. Used by RAG/tools."""
 
     async def upsert(
-        self,
-        namespace: str,  # e.g. "chats", "memories", "obsidian"
-        id: str,
-        vector: list[float],
-        metadata: dict[str, Any] | None = None,
+            self,
+            namespace: str,  # e.g. "chats", "memories", "obsidian"
+            id: str,
+            vector: list[float],
+            metadata: dict[str, Any] | None = None,
     ) -> None:
         ...
 
     async def search(
-        self,
-        namespace: str,
-        query_vector: list[float],
-        *,
-        k: int = 10,
-        filter_metadata: dict[str, Any] | None = None,
+            self,
+            namespace: str,
+            query_vector: list[float],
+            *,
+            k: int = 10,
+            filter_metadata: dict[str, Any] | None = None,
     ) -> list[tuple[str, float, dict[str, Any]]]:
         """Return list of (id, score, metadata)."""
         ...

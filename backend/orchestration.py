@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Any
 
-from backend.interfaces import ModelProvider
-from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType
-from backend.interfaces.tools import ToolContext
+from backend.interfaces import ModelProvider, ToolResult, ChatStore
+from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType, ModelEvent
+from backend.interfaces.storage import ResponseInProgressRecord, PendingToolCall
+from backend.interfaces.tools import ToolContext, Tool, Permission
+from backend.tools import RememberTool, ForgetTool
+from backend.utils import WSChannel
 from backend.ws_schema import (
     build_done,
     build_error,
@@ -19,14 +23,31 @@ from backend.ws_schema import (
     build_token,
     build_tool_call,
     build_tool_result,
+    build_permission_request,
 )
 
 
-async def _send(ws, msg: dict) -> None:
-    await ws.send_str(json.dumps(msg))
+@dataclass
+class ToolCall:
+    name: str
+    call_id: str
+    args: dict
+
+    def __init__(self, name: str, call_id: str, args: dict | str):
+        self.name = name
+        self.call_id = call_id
+
+        if isinstance(args, str):
+            try:
+                actual_args = json.loads(args) if args else {}
+            except json.JSONDecodeError:
+                actual_args = {}
+        else:
+            actual_args = args
+        self.args = actual_args
 
 
-def _event_to_ws_message(event) -> dict[str, Any] | None:
+def _event_to_ws_message(event: ModelEvent) -> dict[str, Any] | None:
     """Map ModelEvent to WS message dict. Returns None if event should be skipped."""
     t = event.type
     p = event.payload or {}
@@ -62,31 +83,86 @@ def _tools_to_openai(tools: list) -> list[dict[str, Any]]:
     return out
 
 
-def _chat_message_from_dict(m: dict[str, Any]) -> ChatMessage:
-    """Build ChatMessage from stored dict (role, content; optional tool_calls, tool_call_id)."""
-    content = m.get("content")
-    if not isinstance(content, str):
-        content = ""
-    return ChatMessage(
-        role=m["role"],
-        content=content,
-        tool_calls=m.get("tool_calls"),
-        tool_call_id=m.get("tool_call_id"),
-    )
+async def _get_call_permission(
+        channel: WSChannel,
+        tool: Tool,
+        tool_call: ToolCall,
+        tool_context: ToolContext,
+) -> bool | None:
+    # todo actually check permissions
+    permission = Permission.ASK
+    if permission is Permission.ALLOW:
+        return True
+
+    if permission is Permission.DENY:
+        return False
+
+    if permission is Permission.ASK or permission is Permission.ASK_ONCE_PER_CHAT:
+        #todo handle once per chat
+        preview = await tool.preview(tool_call.args, tool_context)
+        permission_request = build_permission_request(
+            tool_call.call_id,
+            tool_call.name,
+            preview.title,
+            preview.summary,
+            preview.affected_resources,
+            preview.arguments,
+            preview.dry_run_result
+        )
+        await channel.send(permission_request)
+        return None
+
+    return False
+
+
+def _try_get_memory_message(call: ToolCall, result: ToolResult) -> dict | None:
+    if call.name == RememberTool.NAME and result.success and result.data:
+        data = result.data or {}
+        mem_id = data.get("id")
+        mem_key = data.get("key")
+        mem_content = data.get("content", "")
+        if mem_id is not None and mem_id != "":
+            if data.get("created", True):
+                return build_memory_created(
+                    str(mem_id),
+                    str(mem_key) if mem_key is not None else "",
+                    str(mem_content) if mem_content is not None else "",
+                )
+            else:
+                old = data.get("previous_content", "")
+                return build_memory_updated(
+                    str(mem_id),
+                    str(mem_key) if mem_key is not None else "",
+                    str(old) if old is not None else "",
+                    str(mem_content) if mem_content is not None else "",
+                )
+    elif call.name == ForgetTool.NAME and result.success and result.data:
+        data = result.data or {}
+        mem_id = data.get("id")
+        mem_key = data.get("key")
+        mem_content = data.get("content", "")
+        if mem_id is not None and mem_key is not None:
+            return build_memory_deleted(
+                str(mem_id),
+                str(mem_key),
+                str(mem_content) if mem_content is not None else "",
+            )
+
+    return None
 
 
 async def _run_stream(
-    ws,
-    chat_id: str,
-    user_content: str,
-    *,
-    chat_store,
-    model_provider: ModelProvider,
-    config,
-    memory_store=None,
-    user_id: str | None = None,
-    tools: list | None = None,
-    embedding_store=None,
+        channel: WSChannel,
+        chat_id: str,
+        user_content: str | ResponseInProgressRecord,
+        *,
+        chat_store: ChatStore,
+        model_provider: ModelProvider,
+        config,
+        memory_store=None,
+        user_id: str | None = None,
+        tools: list[Tool] | None = None,
+        embedding_store=None,
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
@@ -97,17 +173,12 @@ async def _run_stream(
     """
     chat = await chat_store.get_chat(chat_id)
     if not chat:
-        await _send(ws, build_error("Chat not found", code="not_found"))
+        await channel.send(build_error("Chat not found", code="not_found"))
         return
 
-    await chat_store.append_messages(chat_id, [{"role": "user", "content": user_content}])
-    history = await chat_store.get_chat_messages(chat_id)
-
-    messages = [
-        _chat_message_from_dict(m)
-        for m in history
-        if isinstance(m.get("role"), str)
-    ]
+    if isinstance(user_content, str):
+        await chat_store.append_messages(chat_id, [ChatMessage("user", user_content)])
+    history_with_memories = await chat_store.get_chat_messages(chat_id)
 
     # Prepend global memories as context when memory_store and user_id are available
     if memory_store and user_id:
@@ -115,54 +186,67 @@ async def _run_stream(
         if memories:
             lines = [f"- {m.key}: {m.content}" for m in memories]
             memory_text = "Stored memories (use when relevant):\n" + "\n".join(lines)
-            messages.insert(0, ChatMessage(role="system", content=memory_text))
+            history_with_memories.insert(0, ChatMessage(role="system", content=memory_text))
 
     openai_tools = _tools_to_openai(tools) if tools else None
-    tools_by_name = {t.name: t for t in (tools or [])}
-
-    final_content: list[str] = []
-    current_messages = list(messages)
+    tools_by_name: dict[str, Tool] = {t.name: t for t in (tools or [])}
     model_id = chat.model or config.model.default_model
 
+    response_record = user_content if isinstance(user_content, ResponseInProgressRecord) \
+        else await chat_store.create_response_in_progress(chat_id)
+
+    final_content = response_record.pending_content
+    pending_tool_calls: list[tuple[ToolCall, bool | None]] = [  # tool_call, permission
+        (ToolCall(tc.tool_name, tc.id, tc.args), tc.permission) for tc in response_record.pending_tool_calls
+    ]
+    response_record.pending_tool_calls.clear()
+    await chat_store.set_response_in_progress(chat_id, response_record.id, response_record)
+
+    all_tool_calls = pending_tool_calls
     while True:
-        request = ChatRequest(
-            messages=current_messages,
-            model=model_id,
-            tools=openai_tools,
-            tool_choice="auto" if openai_tools else None,
-        )
-        accumulated: list[str] = []
-        tool_calls_this_turn: list[dict[str, Any]] = []
+        no_pending_tool_calls = not response_record.pending_tool_calls and not all_tool_calls
+        tool_calls_this_turn: list[ToolCall] = []
+        turn_content = ""
+        if no_pending_tool_calls:
+            context_messages = history_with_memories + response_record.internal_messages_context
+            request = ChatRequest(
+                messages=context_messages,
+                model=model_id,
+                tools=openai_tools,
+                tool_choice="auto" if openai_tools else None,
+            )
 
-        try:
-            async for event in model_provider.stream_chat(request):
-                msg = _event_to_ws_message(event)
-                if msg:
-                    await _send(ws, msg)
-                if event.type == ModelEventType.TOKEN:
-                    accumulated.append(event.payload.get("text", ""))
-                if event.type == ModelEventType.TOOL_CALL:
-                    p = event.payload or {}
-                    tool_calls_this_turn.append({
-                        "id": p.get("tool_call_id", ""),
-                        "name": p.get("name", ""),
-                        "arguments": p.get("arguments") or {},
-                    })
-                if event.type == ModelEventType.DONE:
-                    break
-                if event.type == ModelEventType.ERROR:
-                    break
-        except asyncio.CancelledError:
-            assistant_content = "".join(accumulated) + "".join(final_content)
-            if assistant_content:
-                await chat_store.append_messages(chat_id, [{"role": "assistant", "content": assistant_content}])
-            await _send(ws, build_done(stopped=True))
-            raise
+            # todo handle closing in-progress chats
+            try:
+                async for event in model_provider.stream_chat(request):
+                    msg = _event_to_ws_message(event)
+                    if msg:
+                        await channel.send(msg)
 
-        turn_content = "".join(accumulated)
-        final_content.append(turn_content)
+                    if event.type == ModelEventType.TOKEN:
+                        turn_content += event.payload.get("text", "")
+                    elif event.type == ModelEventType.TOOL_CALL:
+                        p = event.payload or {}
+                        tool_calls_this_turn.append(ToolCall(
+                            p.get("name", ""),
+                            p.get("tool_call_id", ""),
+                            p.get("arguments") or {}
+                        ))
+                    elif event.type == ModelEventType.DONE:
+                        break
+                    elif event.type == ModelEventType.ERROR:
+                        break
+            except asyncio.CancelledError:
+                assistant_content = turn_content + final_content
+                if assistant_content:
+                    await chat_store.append_messages(chat_id, [ChatMessage("assistant", assistant_content)])
+                await channel.send(build_done(stopped=True))
+                raise
 
-        if not tool_calls_this_turn:
+            final_content += turn_content
+
+        all_tool_calls += [(tc, None) for tc in tool_calls_this_turn]
+        if not all_tool_calls:
             break
 
         # Execute each tool call and collect results
@@ -174,91 +258,79 @@ async def _run_stream(
             embedder=model_provider.embed
         )
         tool_results: list[tuple[str, str, bool]] = []  # (tool_call_id, content, success)
-        for tc in tool_calls_this_turn:
-            tool_id = tc.get("id", "")
-            name = tc.get("name", "")
-            args = tc.get("arguments") or {}
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args) if args else {}
-                except json.JSONDecodeError:
-                    args = {}
-            tool = tools_by_name.get(name)
+        for (tool_call, permission) in all_tool_calls:
+            tool = tools_by_name.get(tool_call.name)
             if not tool:
-                tool_results.append((tool_id, f"Unknown tool: {name}", False))
-                await _send(ws, build_tool_result(tool_id, False, f"Unknown tool: {name}"))
+                message = f"Unknown tool: {tool_call.name}"
+                tool_results.append((tool_call.call_id, message, False))
+                await channel.send(build_tool_result(tool_call.call_id, False, message))
                 continue
-            result = await tool.call(args, context)
-            tool_results.append((tool_id, result.content, result.success))
-            await _send(ws, build_tool_result(tool_id, result.success, result.content, data=result.data))
-            if name == "remember" and result.success and result.data:
-                data = result.data or {}
-                mem_id = data.get("id")
-                mem_key = data.get("key")
-                mem_content = data.get("content", "")
-                if mem_id is not None and mem_id != "":
-                    if data.get("created", True):
-                        await _send(ws, build_memory_created(
-                            str(mem_id),
-                            str(mem_key) if mem_key is not None else "",
-                            str(mem_content) if mem_content is not None else "",
-                        ))
-                    else:
-                        old = data.get("previous_content", "")
-                        await _send(ws, build_memory_updated(
-                            str(mem_id),
-                            str(mem_key) if mem_key is not None else "",
-                            str(old) if old is not None else "",
-                            str(mem_content) if mem_content is not None else "",
-                        ))
-            if name == "forget" and result.success and result.data:
-                data = result.data or {}
-                mem_id = data.get("id")
-                mem_key = data.get("key")
-                mem_content = data.get("content", "")
-                if mem_id is not None and mem_key is not None:
-                    await _send(ws, build_memory_deleted(
-                        str(mem_id),
-                        str(mem_key),
-                        str(mem_content) if mem_content is not None else "",
-                    ))
 
-        # Append assistant message with tool_calls and tool result messages for next model call
-        assistant_msg = ChatMessage(
-            role="assistant",
-            content=turn_content,
-            tool_calls=[{"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]} for tc in tool_calls_this_turn],
-            tool_call_id=None,
-        )
-        current_messages.append(assistant_msg)
+            if permission is None:
+                permission = await _get_call_permission(channel, tool, tool_call, context)
+            if permission is None:
+                response_record.pending_tool_calls.append(PendingToolCall(tool_call.call_id, tool.name, tool_call.args))
+                await chat_store.set_response_in_progress(chat_id, response_record.id, response_record)
+                continue
+
+            if permission:
+                result = await tool.call(tool_call.args, context)
+                tool_results.append((tool_call.call_id, result.content, result.success))
+                await channel.send(build_tool_result(tool_call.call_id, result.success, result.content, data=result.data))
+
+                memory_message = _try_get_memory_message(tool_call, result)
+                if memory_message is not None:
+                    await channel.send(memory_message)
+            else:
+                message = f"Permission to use tool {tool_call.name} with args {tool_call.args} was denied"
+                tool_results.append((tool_call.call_id, message, False))
+                await channel.send(build_tool_result(tool_call.call_id, False, message))
+        all_tool_calls.clear()
+
+        tool_messages = []
+        if tool_calls_this_turn:
+            # Append assistant message with tool_calls and tool result messages for next model call
+            assistant_msg = ChatMessage(
+                role="assistant",
+                content=turn_content,
+                tool_calls=[{"id": tc.call_id, "name": tc.name, "arguments": tc.args} for tc in tool_calls_this_turn]
+            )
+            tool_messages.append(assistant_msg)
         for tool_id, content, _ in tool_results:
-            current_messages.append(ChatMessage(role="tool", content=content, tool_calls=None, tool_call_id=tool_id))
+            tool_messages.append(ChatMessage("tool", content, tool_call_id=tool_id))
 
-    assistant_content = "".join(final_content)
-    if assistant_content:
-        await chat_store.append_messages(chat_id, [{"role": "assistant", "content": assistant_content}])
+        response_record.internal_messages_context += tool_messages
+        await chat_store.set_response_in_progress(chat_id, response_record.id, response_record)
+
+    if not response_record.pending_tool_calls:
+        if final_content:
+            await chat_store.append_messages(chat_id, [ChatMessage("assistant", final_content)])
+        await chat_store.set_response_in_progress(chat_id, response_record.id, None)
+    else:
+        response_record.pending_content = final_content
+        await chat_store.set_response_in_progress(chat_id, response_record.id, response_record)
 
 
 async def run_stream_with_interrupt(
-    ws,
-    chat_id: str,
-    user_content: str,
-    *,
-    chat_store,
-    model_provider: ModelProvider,
-    config,
-    stream_task_ref: list,
-    memory_store=None,
-    user_id: str | None = None,
-    tools: list | None = None,
-    embedding_store=None,
+        channel: WSChannel,
+        chat_id: str,
+        user_content: str | ResponseInProgressRecord,
+        *,
+        chat_store: ChatStore,
+        model_provider: ModelProvider,
+        config,
+        stream_task_ref: list,
+        memory_store=None,
+        user_id: str | None = None,
+        tools: list[Tool] | None = None,
+        embedding_store=None,
 ) -> None:
     """
     Run _run_stream in a task; store the task in stream_task_ref so the WS handler can cancel it on interrupt.
     """
     task = asyncio.create_task(
         _run_stream(
-            ws,
+            channel,
             chat_id,
             user_content,
             chat_store=chat_store,

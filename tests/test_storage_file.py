@@ -2,6 +2,7 @@
 
 import pytest
 
+from backend.interfaces import ChatMessage
 from backend.storage.file import FileSystemChatStore, FileSystemMemoryStore
 
 
@@ -43,12 +44,12 @@ async def test_fs_chat_messages(chat_store):
     chat = await chat_store.create_chat("user1", "Chat", "stub")
     msgs = await chat_store.get_chat_messages(chat.id)
     assert msgs == []
-    await chat_store.append_messages(chat.id, [{"role": "user", "content": "hi"}])
-    await chat_store.append_messages(chat.id, [{"role": "assistant", "content": "hello"}])
+    await chat_store.append_messages(chat.id, [ChatMessage("user", "hi")])
+    await chat_store.append_messages(chat.id, [ChatMessage("assistant", "hello")])
     msgs = await chat_store.get_chat_messages(chat.id)
     assert len(msgs) == 2
-    assert msgs[0]["role"] == "user" and msgs[0]["content"] == "hi"
-    assert msgs[1]["role"] == "assistant" and msgs[1]["content"] == "hello"
+    assert msgs[0].role == "user" and msgs[0].content == "hi"
+    assert msgs[1].role == "assistant" and msgs[1].content == "hello"
 
 
 @pytest.mark.asyncio
@@ -64,7 +65,7 @@ async def test_fs_chat_update(chat_store):
 @pytest.mark.asyncio
 async def test_fs_chat_delete(chat_store):
     chat = await chat_store.create_chat("user1", "To Delete", "stub")
-    await chat_store.append_messages(chat.id, [{"role": "user", "content": "x"}])
+    await chat_store.append_messages(chat.id, [ChatMessage("user", "x")])
     ok = await chat_store.delete_chat(chat.id)
     assert ok is True
     assert await chat_store.get_chat(chat.id) is None
@@ -75,13 +76,13 @@ async def test_fs_chat_delete(chat_store):
 @pytest.mark.asyncio
 async def test_fs_chat_persistence(chat_store, tmp_path):
     chat = await chat_store.create_chat("user1", "Persist", "stub")
-    await chat_store.append_messages(chat.id, [{"role": "user", "content": "saved"}])
+    await chat_store.append_messages(chat.id, [ChatMessage("user", "saved")])
     store2 = FileSystemChatStore(tmp_path)
     got = await store2.get_chat(chat.id)
     assert got is not None
     assert got.title == "Persist"
     msgs = await store2.get_chat_messages(chat.id)
-    assert len(msgs) == 1 and msgs[0]["content"] == "saved"
+    assert len(msgs) == 1 and msgs[0].content == "saved"
 
 
 # --- FileSystemMemoryStore ---

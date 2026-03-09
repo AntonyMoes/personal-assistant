@@ -13,10 +13,12 @@ class RememberTool(Tool):
     a preference/fact worth storing. Uses the same preview-and-execute flow as other tools;
     permission for MEMORY_WRITE can be set to "allow" by default so it feels implicit.
     """
+    NAME = "remember"
+
 
     @property
     def name(self) -> str:
-        return "remember"
+        return self.NAME
 
     @property
     def description(self) -> str:
@@ -76,7 +78,7 @@ class RememberTool(Tool):
                     return ToolResult(success=False, content="Failed to update memory.")
                 return ToolResult(
                     success=True,
-                    content=f"Updated memory {record.id}.",
+                    content=f"Updated memory {record.id}. {record.key} is {record.content}",
                     data={
                         "id": record.id,
                         "key": record.key,
@@ -88,7 +90,7 @@ class RememberTool(Tool):
             record = await store.create_memory(context.user_id, key=key, content=content)
             return ToolResult(
                 success=True,
-                content=f"Saved memory with id {record.id}.",
+                content=f"Saved memory with id {record.id}. {record.key} is {record.content}",
                 data={"id": record.id, "key": record.key, "content": record.content, "created": True},
             )
         except Exception as e:

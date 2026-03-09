@@ -2,6 +2,8 @@
 
 import pytest
 
+from backend.interfaces import ChatMessage
+
 
 @pytest.mark.asyncio
 async def test_health(client):
@@ -101,7 +103,7 @@ async def test_get_chat_messages(client, app):
     chat_id = (await create_resp.json())["id"]
     await app["chat_store"].append_messages(
         chat_id,
-        [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
+        [ChatMessage("user", "hi"), ChatMessage("assistant", "hello")],
     )
     resp = await client.get(f"/chats/{chat_id}/messages")
     assert resp.status == 200

@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
+class Permission(StrEnum):
+    ALLOW = "allow"
+    ASK = "ask"
+    ASK_ONCE_PER_CHAT = "ask_once_per_chat"
+    DENY = "deny"
 
 class Capability(StrEnum):
     """Permission capability tags; each tool declares which it uses."""

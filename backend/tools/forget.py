@@ -12,10 +12,11 @@ class ForgetTool(Tool):
     Tool the model can call when the user asks to forget something or when a memory
     is no longer accurate/relevant. Deletes by key (one memory per key per user).
     """
+    NAME = "forget"
 
     @property
     def name(self) -> str:
-        return "forget"
+        return self.NAME
 
     @property
     def description(self) -> str:

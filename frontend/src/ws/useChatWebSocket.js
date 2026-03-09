@@ -27,6 +27,7 @@ export function useChatWebSocket(chatId, callbacks = {}) {
         const c = callbacksRef.current;
         if (type === 'token' && c.onToken) c.onToken(payload.text || '');
         if (type === 'reasoning' && c.onReasoning) c.onReasoning(payload.text || '');
+        if (type === 'permission_request' && c.onPermissionRequest) c.onPermissionRequest(payload || {});
         if (type === 'memory_created' && c.onMemoryCreated) c.onMemoryCreated(payload || {});
         if (type === 'memory_updated' && c.onMemoryUpdated) c.onMemoryUpdated(payload || {});
         if (type === 'memory_deleted' && c.onMemoryDeleted) c.onMemoryDeleted(payload || {});
@@ -66,6 +67,10 @@ export function useChatWebSocket(chatId, callbacks = {}) {
 
   const sendInterrupt = useCallback(() => send('interrupt', {}), [send]);
 
+  const sendPermissionDecision = useCallback((toolCallId, approved) => {
+    send('permission_decision', { tool_call_id: toolCallId, approved: !!approved });
+  }, [send]);
+
   useEffect(() => {
     return connect();
   }, [connect]);
@@ -74,6 +79,7 @@ export function useChatWebSocket(chatId, callbacks = {}) {
     connect,
     sendMessage,
     sendInterrupt,
+    sendPermissionDecision,
     connected,
     isStreaming,
     lastError,

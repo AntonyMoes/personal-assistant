@@ -77,7 +77,7 @@ class ClientMsgType(StrEnum):
     INTERRUPT = "interrupt"
 
 
-def parse_client_message(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def parse_client_message(data: dict[str, Any]) -> tuple[ClientMsgType, dict[str, Any]]:
     """
     Parse a client message. Returns (type, payload).
     Raises ValueError if type is missing or unknown.
@@ -85,10 +85,10 @@ def parse_client_message(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     msg_type = data.get("type")
     if not msg_type:
         raise ValueError("Missing 'type' in message")
-    payload = data.get("payload", {})
     if msg_type not in (t.value for t in ClientMsgType):
         raise ValueError(f"Unknown client message type: {msg_type!r}")
-    return str(msg_type), payload if isinstance(payload, dict) else {}
+    payload = data.get("payload", {})
+    return ClientMsgType(msg_type), payload if isinstance(payload, dict) else {}
 
 
 def build_send_message(content: str) -> dict[str, Any]:

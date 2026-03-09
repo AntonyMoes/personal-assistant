@@ -305,6 +305,132 @@ input, textarea {
 }
 .message-cursor { animation: blink 0.8s step-end infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+
+.message-permission-request {
+  margin-left: 0;
+  margin-right: auto;
+  max-width: 85%;
+  background: #2a2a3a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+/* Subdued appearance when resolved */
+.message-permission-request.permission-resolved-card {
+  background: #222228;
+  border-color: #333;
+}
+/* Resolved + approved: subtle green tint */
+.message-permission-request.permission-resolved-card.permission-approved {
+  background: #1e2628;
+  border-color: #2a3a38;
+}
+.message-permission-request.permission-resolved-card.permission-approved .permission-request-preview strong,
+.message-permission-request.permission-resolved-card.permission-approved .permission-summary {
+  color: #6a7a78;
+}
+.message-permission-request.permission-resolved-card.permission-approved .permission-resources,
+.message-permission-request.permission-resolved-card.permission-approved .permission-resolved {
+  color: #5a6a68;
+}
+.message-permission-request.permission-resolved-card.permission-approved.permission-collapsed .permission-collapsed-text {
+  color: #5a6a68;
+}
+/* Resolved + denied: subtle red tint */
+.message-permission-request.permission-resolved-card.permission-denied {
+  background: #26221e;
+  border-color: #3a322a;
+}
+.message-permission-request.permission-resolved-card.permission-denied .permission-request-preview strong,
+.message-permission-request.permission-resolved-card.permission-denied .permission-summary {
+  color: #7a6a6a;
+}
+.message-permission-request.permission-resolved-card.permission-denied .permission-resources,
+.message-permission-request.permission-resolved-card.permission-denied .permission-resolved {
+  color: #6a5a5a;
+}
+.message-permission-request.permission-resolved-card.permission-denied.permission-collapsed .permission-collapsed-text {
+  color: #6a5a5a;
+}
+.message-permission-request.permission-resolved-card .permission-request-preview strong,
+.message-permission-request.permission-resolved-card .permission-summary {
+  color: #707080;
+}
+.message-permission-request.permission-resolved-card .permission-resources,
+.message-permission-request.permission-resolved-card .permission-resolved {
+  color: #606070;
+}
+/* Collapsed: thin single-line summary */
+.message-permission-request.permission-collapsed {
+  padding: 0.35rem 0.6rem;
+  max-width: 85%;
+}
+.permission-request-preview {
+  width: 100%;
+  min-width: 0;
+}
+.permission-collapsed-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1.3;
+}
+.permission-collapsed-summary:hover {
+  color: #b0b0c0;
+}
+.permission-collapsed-chevron {
+  font-size: 0.6rem;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.permission-collapsed-text {
+  font-size: 0.85rem;
+  color: #9090a0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-permission-request.permission-resolved-card.permission-collapsed .permission-collapsed-text {
+  color: #606070;
+}
+.permission-expand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin: 0 0 0.25rem 0;
+  text-align: left;
+  width: 100%;
+}
+.permission-expand-toggle:disabled {
+  cursor: default;
+}
+.permission-expand-toggle .permission-chevron {
+  font-size: 0.55rem;
+  opacity: 0.7;
+}
+.permission-request-preview strong { display: block; margin-bottom: 0.25rem; }
+.permission-summary { margin: 0; color: #b0b0b0; font-size: 0.9rem; }
+.permission-resources { margin: 0.25rem 0 0; font-size: 0.85rem; color: #808080; }
+.permission-request-actions { display: flex; gap: 0.5rem; margin-top: 0.25rem; }
+.permission-resolved { margin: 0.25rem 0 0; font-size: 0.9rem; color: #808080; }
+
 .message-memory {
   margin-left: 0;
   margin-right: auto;

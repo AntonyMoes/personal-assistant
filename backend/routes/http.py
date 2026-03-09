@@ -2,6 +2,8 @@
 
 from aiohttp import web
 
+from backend.serialization import chat_message_to_dict
+
 DEFAULT_CHAT_TITLE = "New chat"
 
 
@@ -70,7 +72,7 @@ async def get_chat_messages(request: web.Request) -> web.Response:
     if not chat:
         return web.json_response({"error": "Not found"}, status=404)
     messages = await store.get_chat_messages(chat_id)
-    return web.json_response({"messages": messages})
+    return web.json_response({"messages": [chat_message_to_dict(m) for m in messages]})
 
 
 async def create_chat(request: web.Request) -> web.Response:
