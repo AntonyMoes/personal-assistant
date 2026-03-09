@@ -127,7 +127,7 @@ class ObsidianTool(Tool):
     def description(self) -> str:
         return (
             "Interact with the user's Obsidian vault: notes, canvases, and any file type. "
-            "Actions: read (get file content; path with or without extension, default .md), search (keyword in .md), "
+            "Actions: read (get file content; path with or without extension, default .md), search (keyword in .md; empty query = list all .md files), "
             "backlinks (notes linking to a note), list_by_tag (notes with a tag), write (create or overwrite any file), "
             "delete (remove a file), create_folder (create a folder), delete_folder (remove a folder and its contents)."
         )
@@ -147,7 +147,7 @@ class ObsidianTool(Tool):
                 },
                 "query": {
                     "type": "string",
-                    "description": "Search query (keyword). For action=search.",
+                    "description": "Search query (keyword). For action=search. Omit or leave empty to list all .md files.",
                 },
                 "tag": {
                     "type": "string",
@@ -239,10 +239,7 @@ class ObsidianTool(Tool):
 
     async def _search(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         query = (args.get("query") or "").strip()
-        if not query:
-            return ToolResult(success=False, content="Missing 'query' for search.")
         limit = max(1, min(100, int(args.get("limit", 20))))
-        query_lower = query.lower()
         seen: set[str] = set()
         matches: list[dict[str, Any]] = []
 
@@ -252,6 +249,28 @@ class ObsidianTool(Tool):
                 return
             seen.add(name)
             matches.append({"path": name, "snippet": snippet})
+
+        if not query:
+            # Empty query: global search — return all .md files (up to limit)
+            for path in _list_md_files(vault):
+                if len(matches) >= limit:
+                    break
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                    first_line = (text.split("\n")[0] or "").strip()[:80]
+                    snippet = first_line or "(no content)"
+                except Exception:
+                    snippet = "(file)"
+                add(path, snippet)
+            lines = [f"- {m['path']}" for m in matches]
+            content = f"Found {len(matches)} note(s) (all .md files, limit {limit}):\n" + "\n".join(lines) if lines else "No notes in vault."
+            return ToolResult(
+                success=True,
+                content=content,
+                data={"matches": matches, "query": ""},
+            )
+
+        query_lower = query.lower()
 
         # 1) Match by content (keyword in body)
         for path in _list_md_files(vault):

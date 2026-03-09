@@ -115,6 +115,21 @@ async def test_obsidian_search(tool_with_vault, no_vault_ctx, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_obsidian_search_empty_query_returns_all_files(tool_with_vault, no_vault_ctx, tmp_path):
+    """Empty query is a global search that returns all .md files (up to limit)."""
+    (tmp_path / "One.md").write_text("First note.", encoding="utf-8")
+    (tmp_path / "Two.md").write_text("Second note.", encoding="utf-8")
+    (tmp_path / "sub").mkdir(exist_ok=True)
+    (tmp_path / "sub" / "Three.md").write_text("Third.", encoding="utf-8")
+    result = await tool_with_vault.call({"action": "search", "query": "", "limit": 10}, no_vault_ctx)
+    assert result.success is True
+    assert result.data and "matches" in result.data
+    paths = {m["path"] for m in result.data["matches"]}
+    assert paths == {"One", "Two", "sub/Three"}
+    assert "all .md files" in result.content or "Found 3 note" in result.content
+
+
+@pytest.mark.asyncio
 async def test_obsidian_backlinks(tool_with_vault, no_vault_ctx, tmp_path):
     (tmp_path / "Target.md").write_text("I am the target.", encoding="utf-8")
     (tmp_path / "Source.md").write_text("See [[Target]] for more.", encoding="utf-8")
