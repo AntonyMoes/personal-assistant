@@ -234,3 +234,48 @@ async def test_delete_memory(client):
 async def test_delete_memory_not_found(client):
     resp = await client.delete("/memories/nonexistent-id-12345")
     assert resp.status == 404
+
+
+# --- Settings / permissions ---
+
+
+@pytest.mark.asyncio
+async def test_get_settings_returns_permissions_defaults(client, app):
+    resp = await client.get("/settings")
+    assert resp.status == 200
+    data = await resp.json()
+    assert "permissions" in data
+    defaults = data["permissions"].get("defaults") or {}
+    # At least known capabilities should be present with some value
+    assert "filesystem_read" in defaults
+    assert defaults["filesystem_read"] in {"allow", "ask", "ask_once_per_chat", "deny"}
+
+
+@pytest.mark.asyncio
+async def test_update_settings_updates_permission_store(client, app):
+    # Flip a permission and verify it is reflected in GET /settings
+    payload = {
+      "permissions": {
+        "defaults": {
+          "filesystem_read": "deny",
+        }
+      }
+    }
+    resp = await client.patch("/settings", json=payload)
+    assert resp.status == 200
+    data = await resp.json()
+    defaults = data["permissions"].get("defaults") or {}
+    assert defaults.get("filesystem_read") == "deny"
+    # Verify alias 'ask_once' is accepted and normalized to ask_once_per_chat
+    payload2 = {
+      "permissions": {
+        "defaults": {
+          "filesystem_read": "ask_once",
+        }
+      }
+    }
+    resp2 = await client.patch("/settings", json=payload2)
+    assert resp2.status == 200
+    data2 = await resp2.json()
+    defaults2 = data2["permissions"].get("defaults") or {}
+    assert defaults2.get("filesystem_read") == "ask_once_per_chat"

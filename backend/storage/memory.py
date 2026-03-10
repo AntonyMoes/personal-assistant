@@ -14,8 +14,12 @@ from backend.interfaces.storage import (
     MemoryId,
     MemoryRecord,
     MemoryStore,
-    UserId, ResponseInProgressId, ResponseInProgressRecord,
+    PermissionStore,
+    UserId,
+    ResponseInProgressId,
+    ResponseInProgressRecord,
 )
+from backend.interfaces.tools import Capability, Permission
 from backend.utils import now_iso
 
 
@@ -262,3 +266,25 @@ class InMemoryEmbeddingStore(EmbeddingStore):
 
     async def delete_namespace(self, namespace: str) -> None:
         self._by_namespace.pop(namespace, None)
+
+
+class InMemoryPermissionStore(PermissionStore):
+    """In-memory implementation of PermissionStore. Suitable for testing and development."""
+
+    def __init__(self, defaults: dict[Capability, Permission] | None = None) -> None:
+        # Start with ASK for all known capabilities
+        self._perms: dict[Capability, Permission] = {cap: Permission.ASK for cap in Capability}
+        if defaults:
+            for cap, perm in defaults.items():
+                if isinstance(cap, Capability) and isinstance(perm, Permission):
+                    self._perms[cap] = perm
+
+    async def get_all(self) -> dict[Capability, Permission]:
+        return dict(self._perms)
+
+    async def get(self, capability: Capability) -> Permission:
+        return self._perms.get(capability, Permission.ASK)
+
+    async def set(self, capability: Capability, value: Permission) -> None:
+        self._perms[capability] = value
+

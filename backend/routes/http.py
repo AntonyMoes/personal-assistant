@@ -3,6 +3,7 @@
 from aiohttp import web
 
 from backend.serialization import chat_message_to_dict
+from backend.interfaces.tools import Capability, Permission
 
 DEFAULT_CHAT_TITLE = "New chat"
 
@@ -213,13 +214,46 @@ async def list_models(request: web.Request) -> web.Response:
 
 
 async def get_settings(request: web.Request) -> web.Response:
-    # TODO: return app["config"] permissions and defaults
-    return web.json_response({"permissions": {}})
+    store = request.app.get("permission_store")
+    defaults: dict[str, str] = {}
+    if store is not None:
+        perms = await store.get_all()
+        defaults = {cap.value: perm.value for cap, perm in perms.items()}
+    return web.json_response({"permissions": {"defaults": defaults}})
 
 
 async def update_settings(request: web.Request) -> web.Response:
-    # TODO: parse body, validate, persist settings
-    return web.json_response({"permissions": {}})
+    try:
+        body = await request.json() if request.body_exists else {}
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    perms_section = body.get("permissions") or {}
+    if not isinstance(perms_section, dict):
+        return web.json_response({"error": "Invalid 'permissions' object"}, status=400)
+    defaults = perms_section.get("defaults") or {}
+    if not isinstance(defaults, dict):
+        return web.json_response({"error": "Invalid 'permissions.defaults' object"}, status=400)
+
+    store = request.app.get("permission_store")
+    if store is None:
+        return web.json_response({"error": "Permission store not configured"}, status=500)
+
+    # Apply updates; ignore unknown capabilities or permission values
+    for cap_str, perm_str in defaults.items():
+        try:
+            cap = Capability(str(cap_str))
+            # Backwards-compat alias: 'ask_once' -> ASK_ONCE_PER_CHAT
+            if perm_str == "ask_once":
+                perm_str = Permission.ASK_ONCE_PER_CHAT.value
+            perm = Permission(str(perm_str))
+        except ValueError:
+            continue
+        await store.set(cap, perm)
+
+    # Return updated view
+    return await get_settings(request)
 
 
 def setup_http_routes(app: web.Application) -> None:

@@ -14,8 +14,13 @@ from backend.interfaces.storage import (
     MemoryId,
     MemoryRecord,
     MemoryStore,
-    UserId, ResponseInProgressRecord, ResponseInProgressId, PendingToolCall,
+    PermissionStore,
+    UserId,
+    ResponseInProgressRecord,
+    ResponseInProgressId,
+    PendingToolCall,
 )
+from backend.interfaces.tools import Capability, Permission
 from backend.serialization import chat_message_from_dict, chat_message_to_dict
 from backend.utils import now_iso
 
@@ -371,3 +376,62 @@ class FileSystemMemoryStore(MemoryStore):
             return False
         self._write_index(index)
         return True
+
+
+class FileSystemPermissionStore(PermissionStore):
+    """PermissionStore that persists to a permissions.json file under base_path."""
+
+    def __init__(self, base_path: str | Path, defaults: dict[Capability, Permission] | None = None) -> None:
+        base = Path(base_path).resolve()
+        base.mkdir(parents=True, exist_ok=True)
+        self._path = base / "permissions.json"
+        if not self._path.exists():
+            initial: dict[str, object] = {
+                "permissions": {
+                    cap.value: (defaults.get(cap, Permission.ASK).value if defaults else Permission.ASK.value)
+                    for cap in Capability
+                }
+            }
+            self._path.write_text(json.dumps(initial, indent=2), encoding="utf-8")
+
+    def _read(self) -> dict:
+        if not self._path.exists():
+            return {"permissions": {}}
+        raw = self._path.read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            return {"permissions": {}}
+        if not isinstance(data, dict):
+            return {"permissions": {}}
+        perms = data.get("permissions") or {}
+        return {"permissions": perms if isinstance(perms, dict) else {}}
+
+    def _write(self, data: dict) -> None:
+        self._path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    async def get_all(self) -> dict[Capability, Permission]:
+        data = self._read()
+        raw_perms: dict[str, str] = {str(k): str(v) for k, v in data.get("permissions", {}).items()}
+        result: dict[Capability, Permission] = {}
+        for cap in Capability:
+            raw = raw_perms.get(cap.value)
+            try:
+                perm = Permission(raw) if raw is not None else Permission.ASK
+            except ValueError:
+                perm = Permission.ASK
+            result[cap] = perm
+        return result
+
+    async def get(self, capability: Capability) -> Permission:
+        all_perms = await self.get_all()
+        return all_perms.get(capability, Permission.ASK)
+
+    async def set(self, capability: Capability, value: Permission) -> None:
+        data = self._read()
+        perms = data.setdefault("permissions", {})
+        if not isinstance(perms, dict):
+            perms = {}
+            data["permissions"] = perms
+        perms[capability.value] = value.value
+        self._write(data)

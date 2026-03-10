@@ -15,6 +15,7 @@ from backend.interfaces.storage import (
     MemoryStore,
 )
 from backend.interfaces.tools import (
+    Permission,
     Capability,
     Tool,
     ToolContext,
@@ -33,6 +34,7 @@ __all__ = [
     "EmbeddingStore",
     "MemoryRecord",
     "MemoryStore",
+    "Permission",
     "Capability",
     "Tool",
     "ToolContext",

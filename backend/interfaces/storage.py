@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from backend.interfaces import ChatMessage
+from backend.interfaces.tools import Capability, Permission
 
 # Type aliases for IDs
 ChatId = str
@@ -179,3 +180,20 @@ class EmbeddingStore(Protocol):
     async def delete_namespace(self, namespace: str) -> None:
         """Remove all vectors in the namespace."""
         ...
+
+
+class PermissionStore(Protocol):
+    """Global tool permission defaults, keyed by capability."""
+
+    async def get_all(self) -> dict[Capability, Permission]:
+        """Return current permission for each capability."""
+        ...
+
+    async def get(self, capability: Capability) -> Permission:
+        """Get permission for a single capability."""
+        ...
+
+    async def set(self, capability: Capability, value: Permission) -> None:
+        """Update permission for a capability."""
+        ...
+

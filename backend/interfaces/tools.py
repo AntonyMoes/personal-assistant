@@ -7,6 +7,14 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 class Permission(StrEnum):
+    """Permission policy for a capability/tool.
+
+    - ALLOW: tool can run without asking.
+    - ASK: always ask before each use.
+    - ASK_ONCE_PER_CHAT: (reserved) ask once per chat, then reuse the decision. Currently behaves like ASK.
+    - DENY: tool is never allowed.
+    """
+
     ALLOW = "allow"
     ASK = "ask"
     ASK_ONCE_PER_CHAT = "ask_once_per_chat"
@@ -71,8 +79,8 @@ class Tool(Protocol):
         """JSON Schema for the tool's arguments."""
         ...
 
-    def capabilities(self) -> list[Capability]:
-        """Which permission capabilities this tool requires."""
+    def capabilities(self, args: dict[str, Any]) -> list[Capability]:
+        """Which permission capabilities this call uses (depends on args, e.g. action=read vs write)."""
         ...
 
     async def preview(self, args: dict[str, Any], context: ToolContext) -> ToolPreview:

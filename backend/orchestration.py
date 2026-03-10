@@ -9,7 +9,7 @@ from typing import Any
 
 from backend.interfaces import ModelProvider, ToolResult, ChatStore
 from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType, ModelEvent
-from backend.interfaces.storage import ResponseInProgressRecord, PendingToolCall
+from backend.interfaces.storage import ResponseInProgressRecord, PendingToolCall, PermissionStore
 from backend.interfaces.tools import ToolContext, Tool, Permission
 from backend.tools import RememberTool, ForgetTool
 from backend.utils import WSChannel
@@ -88,9 +88,32 @@ async def _get_call_permission(
         tool: Tool,
         tool_call: ToolCall,
         tool_context: ToolContext,
+        permission_store: PermissionStore | None,
 ) -> bool | None:
-    # todo actually check permissions
+    # Resolve permission for this tool based on its capabilities for this call and global settings.
+    # TODO: support ASK_ONCE_PER_CHAT with per-chat caching; for now it behaves like ASK.
     permission = Permission.ASK
+    if permission_store:
+        try:
+            caps = tool.capabilities(tool_call.args)
+        except Exception:
+            caps = []
+        perms: list[Permission] = []
+        for cap in caps:
+            try:
+                cap_perm = await permission_store.get(cap)
+            except Exception:
+                cap_perm = Permission.ASK
+            perms.append(cap_perm)
+        if perms:
+            if Permission.DENY in perms:
+                permission = Permission.DENY
+            elif Permission.ASK in perms:
+                permission = Permission.ASK
+            elif Permission.ASK_ONCE_PER_CHAT in perms:
+                permission = Permission.ASK_ONCE_PER_CHAT
+            else:
+                permission = Permission.ALLOW
     if permission is Permission.ALLOW:
         return True
 
@@ -98,7 +121,6 @@ async def _get_call_permission(
         return False
 
     if permission is Permission.ASK or permission is Permission.ASK_ONCE_PER_CHAT:
-        #todo handle once per chat
         preview = await tool.preview(tool_call.args, tool_context)
         permission_request = build_permission_request(
             tool_call.call_id,
@@ -163,6 +185,7 @@ async def _run_stream(
         user_id: str | None = None,
         tools: list[Tool] | None = None,
         embedding_store=None,
+        permission_store: PermissionStore | None = None,
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
@@ -267,7 +290,7 @@ async def _run_stream(
                 continue
 
             if permission is None:
-                permission = await _get_call_permission(channel, tool, tool_call, context)
+                permission = await _get_call_permission(channel, tool, tool_call, context, permission_store)
             if permission is None:
                 response_record.pending_tool_calls.append(PendingToolCall(tool_call.call_id, tool.name, tool_call.args))
                 await chat_store.set_response_in_progress(chat_id, response_record.id, response_record)
@@ -324,6 +347,7 @@ async def run_stream_with_interrupt(
         user_id: str | None = None,
         tools: list[Tool] | None = None,
         embedding_store=None,
+        permission_store: PermissionStore | None = None,
 ) -> None:
     """
     Run _run_stream in a task; store the task in stream_task_ref so the WS handler can cancel it on interrupt.
@@ -340,6 +364,7 @@ async def run_stream_with_interrupt(
             user_id=user_id,
             tools=tools,
             embedding_store=embedding_store,
+            permission_store=permission_store,
         ),
     )
     stream_task_ref.append(task)

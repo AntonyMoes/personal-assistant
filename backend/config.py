@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from backend.interfaces import Capability, Permission
+
 # Canonical provider names (used by config and providers; defined here to avoid circular import).
 PROVIDER_OPENAI = "openai"
 PROVIDER_STUB = "stub"
@@ -136,7 +138,7 @@ def _dict_to_permissions(data: dict[str, Any] | None) -> PermissionsConfig:
         return PermissionsConfig()
     defaults = data.get("defaults")
     if isinstance(defaults, dict):
-        defaults = {k: str(v) for k, v in defaults.items()}
+        defaults = {Capability(k): Permission(v) for k, v in defaults.items()}
     else:
         defaults = {}
     return PermissionsConfig(defaults=defaults)

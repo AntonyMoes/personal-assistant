@@ -38,7 +38,7 @@ class ForgetTool(Tool):
             "required": ["key"],
         }
 
-    def capabilities(self) -> list[Capability]:
+    def capabilities(self, args: dict[str, Any]) -> list[Capability]:
         return [Capability.MEMORY_WRITE]
 
     async def preview(self, args: dict[str, Any], context: ToolContext) -> ToolPreview:

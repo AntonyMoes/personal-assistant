@@ -26,7 +26,7 @@ model:
   default_model: "stub"
   # openai_api_key: "${OPENAI_API_KEY}"
 
-# Permission defaults per capability: ask | ask_once | allow | deny
+# Permission defaults per capability: allow | ask | ask_once_per_chat | deny
 permissions:
   defaults:
     filesystem_read: "ask"

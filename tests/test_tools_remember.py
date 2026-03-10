@@ -19,7 +19,7 @@ def memory_store():
 
 def test_remember_tool_name_and_capabilities(tool):
     assert tool.name == "remember"
-    assert Capability.MEMORY_WRITE in tool.capabilities()
+    assert Capability.MEMORY_WRITE in tool.capabilities({})
 
 
 def test_remember_tool_args_schema(tool):

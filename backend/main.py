@@ -29,6 +29,7 @@ from backend.storage import (
     create_chat_store,
     create_embedding_store,
     create_memory_store,
+    create_permission_store,
 )
 from backend.tools import ForgetTool, ObsidianTool, RememberTool
 
@@ -43,6 +44,7 @@ def create_app(config_path: str | None = None) -> web.Application:
     app["chat_store"] = create_chat_store(config.storage)
     app["memory_store"] = create_memory_store(config.storage)
     app["embedding_store"] = create_embedding_store(config.storage)
+    app["permission_store"] = create_permission_store(config.storage, config.permissions)
     app["model_provider"] = create_model_provider(config.model)
     vault_path = getattr(config.app, "obsidian_vault_path", "") or ""
     app["tools"] = [RememberTool(), ForgetTool(), ObsidianTool(vault_path=vault_path)]

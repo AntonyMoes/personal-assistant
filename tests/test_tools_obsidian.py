@@ -26,8 +26,12 @@ def tool_with_vault(tmp_path):
 
 def test_obsidian_tool_name_and_capabilities(tool_with_vault):
     assert tool_with_vault.name == "obsidian"
-    assert Capability.OBSIDIAN_READ in tool_with_vault.capabilities()
-    assert Capability.OBSIDIAN_MODIFY in tool_with_vault.capabilities()
+    read_caps = tool_with_vault.capabilities({"action": "read"})
+    write_caps = tool_with_vault.capabilities({"action": "write"})
+    assert Capability.OBSIDIAN_READ in read_caps
+    assert Capability.OBSIDIAN_MODIFY not in read_caps
+    assert Capability.OBSIDIAN_MODIFY in write_caps
+    assert Capability.OBSIDIAN_READ not in write_caps
 
 
 def test_obsidian_tool_args_schema(tool_with_vault):

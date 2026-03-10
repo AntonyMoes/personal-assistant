@@ -39,6 +39,7 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
             user_id=config.app.default_user_id,
             tools=app.get("tools") or [],
             embedding_store=app.get("embedding_store"),
+            permission_store=app.get("permission_store"),
         )
 
     try:
@@ -65,6 +66,7 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
                             user_id=config.app.default_user_id,
                             tools=app.get("tools") or [],
                             embedding_store=app.get("embedding_store"),
+                            permission_store=app.get("permission_store"),
                         )
                     elif msg_type == ClientMsgType.PERMISSION_DECISION:
                         chat_record = await chat_store.get_chat(chat_id)
@@ -106,6 +108,7 @@ async def chat_ws(request: web.Request) -> web.StreamResponse:
                             user_id=config.app.default_user_id,
                             tools=app.get("tools") or [],
                             embedding_store=app.get("embedding_store"),
+                            permission_store=app.get("permission_store"),
                         )
                     elif msg_type == ClientMsgType.INTERRUPT:
                         # todo remove response in progress

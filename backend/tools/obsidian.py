@@ -165,8 +165,22 @@ class ObsidianTool(Tool):
             "required": ["action"],
         }
 
-    def capabilities(self) -> list[Capability]:
-        return [Capability.OBSIDIAN_READ, Capability.OBSIDIAN_MODIFY]
+    def capabilities(self, args: dict[str, Any]) -> list[Capability]:
+        """Capabilities for this call: OBSIDIAN_READ for read-only actions, OBSIDIAN_MODIFY for write/delete."""
+        action_str = (args.get("action") or ObsidianAction.READ.value).strip().lower()
+        try:
+            action = ObsidianAction(action_str)
+        except ValueError:
+            return []
+        read_only = {
+            ObsidianAction.READ,
+            ObsidianAction.SEARCH,
+            ObsidianAction.BACKLINKS,
+            ObsidianAction.LIST_BY_TAG,
+        }
+        if action in read_only:
+            return [Capability.OBSIDIAN_READ]
+        return [Capability.OBSIDIAN_MODIFY]
 
     async def preview(self, args: dict[str, Any], context: ToolContext) -> ToolPreview:
         action = args.get("action", ObsidianAction.READ.value)
