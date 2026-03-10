@@ -4,6 +4,8 @@ import { getChat, getChatMessages, updateChat, deleteChat } from '../api/chats';
 import ConfirmModal from '../components/ConfirmModal';
 import { createMemory, deleteMemory, updateMemory } from '../api/memories';
 import { useChatWebSocket } from '../ws/useChatWebSocket';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function ChatPage() {
   const { chatId } = useParams();
@@ -495,7 +497,14 @@ export default function ChatPage() {
             );
           })() : (
             <div key={i} className={`message message-${m.role}`}>
-              <div className="message-content">{m.content || '\u00a0'}</div>
+              <div className="message-content">
+                <ReactMarkdown
+                  className="message-markdown"
+                  plugins={[remarkGfm]}
+                >
+                  {m.content || '\u00a0'}
+                </ReactMarkdown>
+              </div>
               {m.reasoning && <div className="message-reasoning">{m.reasoning}</div>}
               {m.streaming && <span className="message-cursor">▌</span>}
             </div>

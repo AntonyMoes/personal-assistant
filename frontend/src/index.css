@@ -329,6 +329,46 @@ input, textarea {
   border: 1px solid #2a2a2a;
 }
 .message-content { white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
+.message-markdown {
+  /* Reset white-space for markdown; block elements manage their own layout */
+  white-space: normal;
+}
+.message-markdown p {
+  margin: 0 0 0.35rem;
+}
+.message-markdown p:last-child {
+  margin-bottom: 0;
+}
+.message-markdown a {
+  color: #64b5f6;
+  text-decoration: none;
+}
+.message-markdown a:hover {
+  text-decoration: underline;
+}
+.message-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  background: #1e1e1e;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+}
+.message-markdown pre {
+  margin: 0.35rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #1e1e1e;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.message-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+.message-markdown ul,
+.message-markdown ol {
+  margin: 0.25rem 0 0.35rem 1.25rem;
+  padding: 0;
+}
 .message-reasoning {
   margin-top: 0.5rem;
   font-size: 0.9rem;
