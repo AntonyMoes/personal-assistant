@@ -9,6 +9,9 @@ export default function MemoriesPage() {
   const [editingId, setEditingId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+   const [expandedIds, setExpandedIds] = useState(() => new Set());
+
+  const MAX_PREVIEW_CHARS = 200;
 
   const loadMemories = async () => {
     setLoading(true);
@@ -64,6 +67,15 @@ export default function MemoriesPage() {
     }
   };
 
+  const toggleExpanded = (id) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (loading) return <div className="page-message">Loading memories…</div>;
   if (error) return <div className="page-message error">Error: {error}</div>;
 
@@ -99,7 +111,26 @@ export default function MemoriesPage() {
               ) : (
                 <>
                   <span className="memory-list-key">{m.key}</span>
-                  <span className="memory-list-content">{m.content || '\u00a0'}</span>
+                  <div className="memory-list-content-wrap">
+                    <span className="memory-list-content">
+                      {(() => {
+                        const text = m.content || '\u00a0';
+                        const isLong = text.length > MAX_PREVIEW_CHARS;
+                        const expanded = expandedIds.has(m.id);
+                        if (!isLong || expanded) return text;
+                        return `${text.slice(0, MAX_PREVIEW_CHARS)}…`;
+                      })()}
+                    </span>
+                    {(m.content || '').length > MAX_PREVIEW_CHARS && (
+                      <button
+                        type="button"
+                        className="memory-list-toggle"
+                        onClick={() => toggleExpanded(m.id)}
+                      >
+                        {expandedIds.has(m.id) ? 'Show less' : 'Show more'}
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="memory-list-edit"
