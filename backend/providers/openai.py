@@ -129,7 +129,7 @@ class OpenAIModelProvider(ModelProvider):
 
     def list_models(self) -> list[dict[str, Any]]:
         return [
-            {"id": "gpt-5", "provider": self.name, "context_length": 128000},
+            {"id": "gpt-5.1", "provider": self.name, "context_length": 128000},
             {"id": "gpt-5-mini", "provider": self.name, "context_length": 128000},
             {"id": "gpt-5-nano", "provider": self.name, "context_length": 128000},
         ]
