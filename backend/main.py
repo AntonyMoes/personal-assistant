@@ -43,12 +43,20 @@ def create_app(config_path: str | None = None) -> web.Application:
     app["config"] = config
     app["chat_store"] = create_chat_store(config.storage)
     app["memory_store"] = create_memory_store(config.storage)
-    # EmbeddingStore: file-backed when storage.backend is file; unused by tools until Obsidian RAG.
+    # EmbeddingStore: file-backed when storage.backend is file; used by Obsidian semantic/hybrid search.
     app["embedding_store"] = create_embedding_store(config.storage)
     app["permission_store"] = create_permission_store(config.storage, config.permissions)
     app["model_provider"] = create_model_provider(config.model)
     vault_path = getattr(config.app, "obsidian_vault_path", "") or ""
-    app["tools"] = [RememberTool(), ForgetTool(), ObsidianTool(vault_path=vault_path)]
+    app["tools"] = [
+        RememberTool(),
+        ForgetTool(),
+        ObsidianTool(
+            vault_path=vault_path,
+            rag_config=config.obsidian_rag,
+            embeddings_dir=config.storage.embeddings_dir,
+        ),
+    ]
     setup_http_routes(app)
     setup_ws_routes(app)
     return app

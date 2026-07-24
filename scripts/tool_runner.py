@@ -34,8 +34,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from backend.config import load_config
 from backend.interfaces.tools import ToolContext
+from backend.providers import create_model_provider
 from backend.storage import (
-    create_chat_store,
     create_embedding_store,
     create_memory_store,
 )
@@ -60,11 +60,17 @@ def _make_tools_and_context(config_path: str | Path | None = None):
     """Build config, stores, tools, and context. Returns (config, tools_by_name, context)."""
     config = _load(config_path)
     memory_store = create_memory_store(config.storage)
+    embedding_store = create_embedding_store(config.storage)
+    model_provider = create_model_provider(config.model)
     vault_path = getattr(config.app, "obsidian_vault_path", "") or ""
     tools_list = [
         RememberTool(),
         ForgetTool(),
-        ObsidianTool(vault_path=vault_path),
+        ObsidianTool(
+            vault_path=vault_path,
+            rag_config=config.obsidian_rag,
+            embeddings_dir=config.storage.embeddings_dir,
+        ),
     ]
     tools_by_name = {t.name: t for t in tools_list}
     user_id = config.app.default_user_id
@@ -72,8 +78,8 @@ def _make_tools_and_context(config_path: str | Path | None = None):
         user_id=user_id,
         chat_id=None,
         memory_store=memory_store,
-        embedding_store=create_embedding_store(config.storage),
-        embedder=None,
+        embedding_store=embedding_store,
+        embedder=model_provider.embed,
     )
     return config, tools_by_name, context
 

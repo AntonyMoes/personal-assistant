@@ -17,7 +17,7 @@ app:
   obsidian_vault_path: "/vault"
 
 # Storage: "file" persists chats/memories/embeddings under data/ (recommended). "memory" is ephemeral (tests/dev).
-# EmbeddingStore is file-backed when backend is file; no tool uses it yet (Obsidian RAG next).
+# EmbeddingStore is file-backed when backend is file; used by Obsidian semantic/hybrid search.
 storage:
   backend: "file"
   base_path: "data"
@@ -52,12 +52,15 @@ memories:
   retrieve_top_k: 8
   candidate_limit: 100
 
-# Obsidian vault indexing (chunk → embed → EmbeddingStore). Used by indexer; semantic search tool next.
+# Obsidian vault indexing + semantic/hybrid search (obsidian tool search mode=).
 obsidian_rag:
   namespace: "obsidian"
   chunk_chars: 1600
   chunk_overlap_chars: 200
   embed_batch_size: 64
+  search_top_k: 8
+  # Max files refreshed per semantic/hybrid search (0 = all stale/new files).
+  ensure_index_max_files: 0
 
 # Permission defaults per capability: allow | ask | ask_once_per_chat | deny
 permissions:

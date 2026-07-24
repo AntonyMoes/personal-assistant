@@ -86,13 +86,17 @@ class MemoryInjectionConfig:
 
 @dataclass
 class ObsidianRagConfig:
-    """Vault indexing / semantic search knobs (indexer; tool search lands later)."""
+    """Vault indexing / semantic search knobs."""
 
     namespace: str = "obsidian"
     # Approx chunk size in characters (~400 tokens). No tokenizer dependency.
     chunk_chars: int = 1600
     chunk_overlap_chars: int = 200
     embed_batch_size: int = 64
+    # Default limit for semantic/hybrid search when args.limit omitted.
+    search_top_k: int = 8
+    # Max files to (re)index per lazy ensure_index on search. 0 = unlimited.
+    ensure_index_max_files: int = 0
 
 
 @dataclass
@@ -240,6 +244,8 @@ def _dict_to_obsidian_rag(data: dict[str, Any] | None) -> ObsidianRagConfig:
         chunk_chars=int(data.get("chunk_chars", defaults.chunk_chars)),
         chunk_overlap_chars=int(data.get("chunk_overlap_chars", defaults.chunk_overlap_chars)),
         embed_batch_size=int(data.get("embed_batch_size", defaults.embed_batch_size)),
+        search_top_k=int(data.get("search_top_k", defaults.search_top_k)),
+        ensure_index_max_files=int(data.get("ensure_index_max_files", defaults.ensure_index_max_files)),
     )
 
 

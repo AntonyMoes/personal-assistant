@@ -42,6 +42,7 @@ def test_obsidian_tool_args_schema(tool_with_vault):
         "read", "search", "backlinks", "list_by_tag", "write", "delete",
         "create_folder", "delete_folder",
     }
+    assert set(schema["properties"]["mode"]["enum"]) == {"keyword", "semantic", "hybrid"}
     assert "action" in schema["required"]
 
 
@@ -243,3 +244,127 @@ async def test_obsidian_preview(tool_with_vault, no_vault_ctx):
     assert preview.tool_name == "obsidian"
     assert "read" in preview.title.lower()
     assert "My Note" in preview.summary
+
+
+# --- Semantic / hybrid search ---
+
+
+_VOCAB = (
+    "rocket", "orbit", "cook", "pasta", "garden", "alpha", "beta", "spaceflight",
+)
+
+
+async def _bow_embed(texts: list[str]) -> list[list[float]]:
+    out: list[list[float]] = []
+    for text in texts:
+        lower = text.lower()
+        out.append([1.0 if token in lower else 0.0 for token in _VOCAB])
+    return out
+
+
+@pytest.fixture
+def rag_ctx(tmp_path):
+    from backend.storage.memory import InMemoryEmbeddingStore
+
+    store = InMemoryEmbeddingStore()
+    return ToolContext(
+        user_id="u1",
+        chat_id="c1",
+        memory_store=None,
+        embedding_store=store,
+        embedder=_bow_embed,
+    )
+
+
+@pytest.fixture
+def rag_tool(tmp_path):
+    from backend.config import ObsidianRagConfig
+
+    (tmp_path / "Notes").mkdir()
+    (tmp_path / "Notes" / "Space.md").write_text(
+        "# Space\n\nNotes about rockets and orbital spaceflight.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "Notes" / "Food.md").write_text(
+        "# Food\n\nCooking pasta recipes.\n",
+        encoding="utf-8",
+    )
+    return ObsidianTool(
+        vault_path=str(tmp_path),
+        rag_config=ObsidianRagConfig(search_top_k=5, namespace="obsidian"),
+        embeddings_dir=tmp_path / "emb",
+    )
+
+
+@pytest.mark.asyncio
+async def test_obsidian_semantic_search(rag_tool, rag_ctx):
+    result = await rag_tool.call(
+        {"action": "search", "query": "rockets and orbits", "mode": "semantic", "limit": 5},
+        rag_ctx,
+    )
+    assert result.success is True
+    assert result.data["mode"] == "semantic"
+    paths = [m["path"] for m in result.data["matches"]]
+    assert paths[0] == "Notes/Space"
+    assert "Notes/Space" in result.content
+
+
+@pytest.mark.asyncio
+async def test_obsidian_hybrid_search(rag_tool, rag_ctx):
+    result = await rag_tool.call(
+        {"action": "search", "query": "pasta", "mode": "hybrid", "limit": 5},
+        rag_ctx,
+    )
+    assert result.success is True
+    assert result.data["mode"] == "hybrid"
+    paths = [m["path"] for m in result.data["matches"]]
+    assert "Notes/Food" in paths
+
+
+@pytest.mark.asyncio
+async def test_obsidian_semantic_requires_embedder_falls_back_to_keyword(tmp_path):
+    tool = ObsidianTool(vault_path=str(tmp_path), embeddings_dir=tmp_path / "emb")
+    (tmp_path / "A.md").write_text("hello world", encoding="utf-8")
+    ctx = ToolContext(user_id="u1", chat_id="c1", embedding_store=None, embedder=None)
+    result = await tool.call({"action": "search", "query": "hello", "mode": "semantic"}, ctx)
+    assert result.success is True
+    assert result.data.get("mode") == "keyword"
+    assert any(m["path"] == "A" for m in result.data["matches"])
+
+@pytest.mark.asyncio
+async def test_obsidian_semantic_empty_query_lists_notes(rag_tool, rag_ctx):
+    """Empty query lists notes even when mode is semantic (no index required)."""
+    result = await rag_tool.call({"action": "search", "query": "", "mode": "semantic"}, rag_ctx)
+    assert result.success is True
+    paths = {m["path"] for m in result.data["matches"]}
+    assert "Notes/Space" in paths
+
+
+@pytest.mark.asyncio
+async def test_obsidian_keyword_mode_explicit(tool_with_vault, no_vault_ctx, tmp_path):
+    (tmp_path / "A.md").write_text("apple banana", encoding="utf-8")
+    result = await tool_with_vault.call(
+        {"action": "search", "query": "banana", "mode": "keyword"},
+        no_vault_ctx,
+    )
+    assert result.success is True
+    assert result.data.get("mode") == "keyword"
+
+
+@pytest.mark.asyncio
+async def test_obsidian_default_mode_is_hybrid(rag_tool, rag_ctx):
+    result = await rag_tool.call(
+        {"action": "search", "query": "rockets", "limit": 5},
+        rag_ctx,
+    )
+    assert result.success is True
+    assert result.data.get("mode") == "hybrid"
+
+
+@pytest.mark.asyncio
+async def test_obsidian_empty_query_lists_notes_even_with_default_hybrid(rag_tool, rag_ctx):
+    result = await rag_tool.call({"action": "search", "query": ""}, rag_ctx)
+    assert result.success is True
+    paths = {m["path"] for m in result.data["matches"]}
+    assert "Notes/Space" in paths
+    assert "Notes/Food" in paths

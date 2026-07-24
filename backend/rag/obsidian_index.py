@@ -258,11 +258,14 @@ class ObsidianVaultIndexer:
                     f"embedder returned {len(vectors)} vectors for {len(batch)} texts"
                 )
             for chunk, vector in zip(batch, vectors):
+                body = chunk.text.split("\n", 1)[-1] if "\n" in chunk.text else chunk.text
+                snippet = body.replace("\n", " ").strip()[:240]
                 meta = {
                     "path": chunk.path,
                     "heading": chunk.heading,
                     "chunk_index": chunk.chunk_index,
                     "title": chunk.title,
                     "mtime": mtime,
+                    "snippet": snippet,
                 }
                 await self._store.upsert(ns, chunk.id, vector, meta)

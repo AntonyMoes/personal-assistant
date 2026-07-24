@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -16,6 +17,8 @@ from backend.interfaces.model import (
     ModelProvider,
 )
 from backend.config import PROVIDER_OPENAI
+
+logger = logging.getLogger(__name__)
 
 
 def _message_to_openai(m: ChatMessage) -> dict[str, Any]:
@@ -125,6 +128,10 @@ class OpenAIModelProvider(ModelProvider):
             )
             return [item.embedding for item in r.data]
         except Exception:
+            logger.exception(
+                "OpenAI embeddings failed for %d text(s); returning zero vectors",
+                len(texts),
+            )
             return [[0.0] * 1536 for _ in texts]
 
     def list_models(self) -> list[dict[str, Any]]:

@@ -8,7 +8,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from backend.config import ObsidianRagConfig
 from backend.interfaces.tools import Capability, ToolContext, ToolPreview, ToolResult, Tool
+from backend.rag.obsidian_index import ObsidianIndexConfig, ObsidianVaultIndexer
 
 
 class ObsidianAction(StrEnum):
@@ -20,6 +22,15 @@ class ObsidianAction(StrEnum):
     DELETE = "delete"
     CREATE_FOLDER = "create_folder"
     DELETE_FOLDER = "delete_folder"
+
+
+class SearchMode(StrEnum):
+    KEYWORD = "keyword"
+    SEMANTIC = "semantic"
+    HYBRID = "hybrid"
+
+
+_RRF_K = 60
 
 
 def _vault_root_from_path(vault_path: str) -> Path | None:
@@ -109,15 +120,55 @@ def _note_name_from_path(vault: Path, path: Path) -> str:
         return path.name
 
 
+def _display_note_path(path: str) -> str:
+    """Normalize stored/relative paths to note path without .md (tool read convention)."""
+    p = (path or "").replace("\\", "/").strip()
+    if p.lower().endswith(".md"):
+        p = p[:-3]
+    return p
+
+
+def _rrf_fuse(result_lists: list[list[dict[str, Any]]], *, limit: int) -> list[dict[str, Any]]:
+    """Reciprocal rank fusion over path-keyed hit lists."""
+    scores: dict[str, float] = {}
+    best: dict[str, dict[str, Any]] = {}
+    for results in result_lists:
+        for rank, item in enumerate(results):
+            path = item["path"]
+            scores[path] = scores.get(path, 0.0) + 1.0 / (_RRF_K + rank + 1)
+            prev = best.get(path)
+            if prev is None or len(str(item.get("snippet") or "")) > len(str(prev.get("snippet") or "")):
+                best[path] = dict(item)
+    ordered = sorted(scores.keys(), key=lambda p: -scores[p])[:limit]
+    fused: list[dict[str, Any]] = []
+    for path in ordered:
+        row = dict(best[path])
+        row["path"] = path
+        row["score"] = scores[path]
+        row["source"] = "hybrid"
+        fused.append(row)
+    return fused
+
+
 class ObsidianTool(Tool):
     """
-    Tool to interact with an Obsidian vault: read notes, keyword search, backlinks, list by tag, write.
-    Vault path is set at creation (e.g. from config). Uses OBSIDIAN_READ for read/search/backlinks/list_by_tag,
-    OBSIDIAN_MODIFY for write.
+    Tool to interact with an Obsidian vault: read notes, keyword/semantic/hybrid search,
+    backlinks, list by tag, write. Vault path is set at creation (e.g. from config).
+    Uses OBSIDIAN_READ for read/search/backlinks/list_by_tag, OBSIDIAN_MODIFY for write.
     """
 
-    def __init__(self, vault_path: str = "") -> None:
+    def __init__(
+            self,
+            vault_path: str = "",
+            *,
+            rag_config: ObsidianRagConfig | None = None,
+            embeddings_dir: str | Path | None = None,
+    ) -> None:
         self._vault_path = (vault_path or "").strip()
+        self._rag = rag_config or ObsidianRagConfig()
+        self._embeddings_dir = Path(embeddings_dir).resolve() if embeddings_dir else None
+        self._indexer: ObsidianVaultIndexer | None = None
+        self._indexer_store_id: int | None = None
 
     @property
     def name(self) -> str:
@@ -127,9 +178,11 @@ class ObsidianTool(Tool):
     def description(self) -> str:
         return (
             "Interact with the user's Obsidian vault: notes, canvases, and any file type. "
-            "Actions: read (get file content; path with or without extension, default .md), search (keyword in .md; empty query = list all .md files), "
+            "Actions: read (get file content; path with or without extension, default .md), "
+            "search (keyword, semantic, or hybrid over .md; empty query = list all .md files), "
             "backlinks (notes linking to a note), list_by_tag (notes with a tag), write (create or overwrite any file), "
-            "delete (remove a file), create_folder (create a folder), delete_folder (remove a folder and its contents)."
+            "delete (remove a file), create_folder (create a folder), delete_folder (remove a folder and its contents). "
+            "Prefer search mode=hybrid or semantic for meaning-based discovery, then read full notes by path."
         )
 
     def args_schema(self) -> dict[str, Any]:
@@ -147,7 +200,12 @@ class ObsidianTool(Tool):
                 },
                 "query": {
                     "type": "string",
-                    "description": "Search query (keyword). For action=search. Omit or leave empty to list all .md files.",
+                    "description": "Search query. For action=search. Omit or leave empty to list all .md files (keyword mode only).",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [m.value for m in SearchMode],
+                    "description": "Search mode for action=search: hybrid (default; keyword+semantic), semantic, or keyword.",
                 },
                 "tag": {
                     "type": "string",
@@ -159,7 +217,7 @@ class ObsidianTool(Tool):
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max results for search. Default 20.",
+                    "description": "Max results for search. Default 20 for keyword; config search_top_k for semantic/hybrid.",
                 },
             },
             "required": ["action"],
@@ -189,7 +247,7 @@ class ObsidianTool(Tool):
         if path:
             summary += f" path={path!r}"
         if action == ObsidianAction.SEARCH.value:
-            summary += f" query={args.get('query', '')!r}"
+            summary += f" query={args.get('query', '')!r} mode={args.get('mode', SearchMode.HYBRID.value)!r}"
         if action == ObsidianAction.LIST_BY_TAG.value:
             summary += f" tag=#{args.get('tag', '')}"
         if action == ObsidianAction.WRITE.value:
@@ -221,7 +279,7 @@ class ObsidianTool(Tool):
         if action == ObsidianAction.READ:
             return await self._read(vault, args)
         if action == ObsidianAction.SEARCH:
-            return await self._search(vault, args)
+            return await self._search(vault, args, context)
         if action == ObsidianAction.BACKLINKS:
             return await self._backlinks(vault, args)
         if action == ObsidianAction.LIST_BY_TAG:
@@ -235,6 +293,33 @@ class ObsidianTool(Tool):
         if action == ObsidianAction.DELETE_FOLDER:
             return await self._delete_folder(vault, args)
         return ToolResult(success=False, content=f"Unknown action: {action!r}")
+
+    def _resolve_search_mode(self, args: dict[str, Any]) -> SearchMode | ToolResult:
+        raw = (args.get("mode") or SearchMode.HYBRID.value).strip().lower()
+        try:
+            return SearchMode(raw)
+        except ValueError:
+            return ToolResult(
+                success=False,
+                content=f"Unknown search mode: {raw!r}. Use keyword, semantic, or hybrid.",
+            )
+
+    def _get_indexer(self, context: ToolContext) -> ObsidianVaultIndexer | None:
+        store = context.embedding_store
+        embedder = context.embedder
+        if store is None or embedder is None:
+            return None
+        store_id = id(store)
+        if self._indexer is None or self._indexer_store_id != store_id:
+            self._indexer = ObsidianVaultIndexer(
+                self._vault_path,
+                store,
+                embedder,
+                config=ObsidianIndexConfig.from_rag_config(self._rag),
+                embeddings_dir=self._embeddings_dir,
+            )
+            self._indexer_store_id = store_id
+        return self._indexer
 
     async def _read(self, vault: Path, args: dict[str, Any]) -> ToolResult:
         path_arg = args.get("path") or ""
@@ -251,9 +336,116 @@ class ObsidianTool(Tool):
             data={"path": _rel_path(vault, file_path), "content": text},
         )
 
-    async def _search(self, vault: Path, args: dict[str, Any]) -> ToolResult:
+    async def _search(self, vault: Path, args: dict[str, Any], context: ToolContext) -> ToolResult:
+        mode_or_err = self._resolve_search_mode(args)
+        if isinstance(mode_or_err, ToolResult):
+            return mode_or_err
+        mode = mode_or_err
         query = (args.get("query") or "").strip()
-        limit = max(1, min(100, int(args.get("limit", 20))))
+
+        if mode == SearchMode.KEYWORD:
+            default_limit = 20
+        else:
+            default_limit = max(1, self._rag.search_top_k)
+        if args.get("limit") is None:
+            limit = default_limit
+        else:
+            limit = max(1, min(100, int(args.get("limit", default_limit))))
+
+        # Empty query: list notes (keyword scan only; no embed/index).
+        if not query:
+            return await self._search_keyword(vault, query, limit)
+
+        if mode == SearchMode.KEYWORD:
+            return await self._search_keyword(vault, query, limit)
+
+        indexer = self._get_indexer(context)
+        if indexer is None:
+            # Graceful degrade: hybrid/semantic without embed stack → keyword.
+            return await self._search_keyword(vault, query, limit)
+
+        max_files = self._rag.ensure_index_max_files
+        await indexer.ensure_index(max_files=max_files if max_files > 0 else None)
+
+        if mode == SearchMode.SEMANTIC:
+            matches = await self._search_semantic(context, indexer.namespace, query, limit)
+            return self._format_search_result(matches, query, mode)
+
+        # hybrid
+        keyword_matches = (await self._search_keyword(vault, query, limit)).data.get("matches") or []
+        semantic_matches = await self._search_semantic(context, indexer.namespace, query, limit)
+        fused = _rrf_fuse([keyword_matches, semantic_matches], limit=limit)
+        return self._format_search_result(fused, query, mode)
+
+    def _format_search_result(
+            self,
+            matches: list[dict[str, Any]],
+            query: str,
+            mode: SearchMode,
+    ) -> ToolResult:
+        lines: list[str] = []
+        for m in matches:
+            path = m.get("path", "")
+            snippet = (m.get("snippet") or "").strip()
+            heading = (m.get("heading") or "").strip()
+            score = m.get("score")
+            parts = [f"- {path}"]
+            if heading:
+                parts.append(f"[{heading}]")
+            if score is not None:
+                try:
+                    parts.append(f"(score={float(score):.3f})")
+                except (TypeError, ValueError):
+                    pass
+            line = " ".join(parts)
+            if snippet:
+                line += f": {snippet}"
+            lines.append(line)
+        label = mode.value
+        content = (
+            f"Found {len(matches)} note(s) ({label}):\n" + "\n".join(lines)
+            if lines
+            else f"No matches ({label})."
+        )
+        return ToolResult(
+            success=True,
+            content=content,
+            data={"matches": matches, "query": query, "mode": mode.value},
+        )
+
+    async def _search_semantic(
+            self,
+            context: ToolContext,
+            namespace: str,
+            query: str,
+            limit: int,
+    ) -> list[dict[str, Any]]:
+        vectors = await context.embedder([query])
+        if not vectors:
+            return []
+        hits = await context.embedding_store.search(namespace, vectors[0], k=max(limit * 3, limit))
+        matches: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for chunk_id, score, meta in hits:
+            path = _display_note_path(str(meta.get("path") or chunk_id.split("#", 1)[0]))
+            if path in seen:
+                continue
+            seen.add(path)
+            snippet = str(meta.get("snippet") or "").strip()
+            heading = str(meta.get("heading") or "").strip()
+            matches.append({
+                "path": path,
+                "snippet": snippet,
+                "heading": heading,
+                "score": float(score),
+                "source": "semantic",
+                "chunk_id": chunk_id,
+            })
+            if len(matches) >= limit:
+                break
+        return matches
+
+    async def _search_keyword(self, vault: Path, query: str, limit: int) -> ToolResult:
         seen: set[str] = set()
         matches: list[dict[str, Any]] = []
 
@@ -262,7 +454,7 @@ class ObsidianTool(Tool):
             if name in seen or len(matches) >= limit:
                 return
             seen.add(name)
-            matches.append({"path": name, "snippet": snippet})
+            matches.append({"path": name, "snippet": snippet, "source": "keyword"})
 
         if not query:
             # Empty query: global search — return all .md files (up to limit)
@@ -281,7 +473,7 @@ class ObsidianTool(Tool):
             return ToolResult(
                 success=True,
                 content=content,
-                data={"matches": matches, "query": ""},
+                data={"matches": matches, "query": "", "mode": SearchMode.KEYWORD.value},
             )
 
         query_lower = query.lower()
@@ -321,7 +513,7 @@ class ObsidianTool(Tool):
         return ToolResult(
             success=True,
             content=content,
-            data={"matches": matches, "query": query},
+            data={"matches": matches, "query": query, "mode": SearchMode.KEYWORD.value},
         )
 
     async def _backlinks(self, vault: Path, args: dict[str, Any]) -> ToolResult:
