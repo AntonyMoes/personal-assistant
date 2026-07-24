@@ -24,7 +24,13 @@ def create_memory_store(storage_config: StorageConfig):
 
 
 def create_embedding_store(storage_config: StorageConfig):
-    """Create an EmbeddingStore instance. Currently always in-memory."""
+    """Create an EmbeddingStore.
+
+    Scaffolding for future RAG / semantic memory: always returns an in-memory store
+    (ignores storage.backend / embeddings_dir). No tool reads or writes it yet.
+    See AGENTS.md and docs/optimizations.md.
+    """
+    _ = storage_config  # reserved for a future file-backed implementation
     return InMemoryEmbeddingStore()
 
 

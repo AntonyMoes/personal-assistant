@@ -1,6 +1,18 @@
 # personal-assistant
 Jarvis, do your thing
 
+Coding agents: start with [`AGENTS.md`](AGENTS.md).
+
+## Setup
+
+```bash
+cp config.example.yaml config.yaml
+cp .env.example .env   # optional; set OPENAI_API_KEY for OpenAI
+pip install -r requirements.txt
+```
+
+`config.example.yaml` defaults to **file** storage under `data/` and loads the persona from `prompts/system.md`.
+
 ## Backend
 
 From the **project root** (this directory):

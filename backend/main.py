@@ -43,6 +43,7 @@ def create_app(config_path: str | None = None) -> web.Application:
     app["config"] = config
     app["chat_store"] = create_chat_store(config.storage)
     app["memory_store"] = create_memory_store(config.storage)
+    # EmbeddingStore is unused scaffolding for future RAG (always in-memory). See AGENTS.md.
     app["embedding_store"] = create_embedding_store(config.storage)
     app["permission_store"] = create_permission_store(config.storage, config.permissions)
     app["model_provider"] = create_model_provider(config.model)

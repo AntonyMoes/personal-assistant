@@ -189,9 +189,9 @@ async def _run_stream(
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
-    If memory_store and user_id are set, memories are injected as context. If tools are set, they are
-    passed to the model and tool_call events are executed (e.g. remember); results are sent and the
-    model is re-called until it returns no tool calls.
+    Injects config.app.system_prompt (if set), then memories, as ephemeral system messages.
+    If tools are set, they are passed to the model and tool_call events are executed; results are
+    sent and the model is re-called until it returns no tool calls.
     Can be cancelled (asyncio.CancelledError); on cancel, persists partial assistant content and sends done(stopped=True).
     """
     chat = await chat_store.get_chat(chat_id)
@@ -203,13 +203,19 @@ async def _run_stream(
         await chat_store.append_messages(chat_id, [ChatMessage("user", user_content)])
     history_with_memories = await chat_store.get_chat_messages(chat_id)
 
-    # Prepend global memories as context when memory_store and user_id are available
+    # Prepend stable system prompt, then global memories (not persisted into chat history).
+    prefix: list[ChatMessage] = []
+    system_prompt = (getattr(getattr(config, "app", None), "system_prompt", None) or "").strip()
+    if system_prompt:
+        prefix.append(ChatMessage(role="system", content=system_prompt))
     if memory_store and user_id:
         memories = await memory_store.list_memories(user_id, limit=50)
         if memories:
             lines = [f"- {m.key}: {m.content}" for m in memories]
             memory_text = "Stored memories (use when relevant):\n" + "\n".join(lines)
-            history_with_memories.insert(0, ChatMessage(role="system", content=memory_text))
+            prefix.append(ChatMessage(role="system", content=memory_text))
+    if prefix:
+        history_with_memories = prefix + history_with_memories
 
     openai_tools = _tools_to_openai(tools) if tools else None
     tools_by_name: dict[str, Tool] = {t.name: t for t in (tools or [])}

@@ -1,0 +1,14 @@
+---
+description: Core project conventions for coding agents
+alwaysApply: true
+---
+
+# personal-assistant
+
+- Read `AGENTS.md` for run commands, config, and architecture map.
+- Backend is raw aiohttp + protocols; do not add LangChain unless explicitly asked.
+- Prefer `storage.backend: file` for durable local state; tests may use `memory`.
+- System persona lives in `prompts/system.md` — edit there, not inline in orchestration.
+- `EmbeddingStore` is unused scaffolding for future RAG; do not remove without a replacement plan.
+- Never commit `config.yaml`, `.env`, or `data/`.
+- Run from repo root: `python -m backend.main`; tests via `pytest`.

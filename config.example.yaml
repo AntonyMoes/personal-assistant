@@ -1,4 +1,4 @@
-# Copy to config.yaml and adjust. Secrets (e.g. API keys) can be set via environment variables.
+# Copy to config.yaml and adjust. Secrets: see .env.example; YAML supports ${VAR} substitution.
 
 server:
   host: "127.0.0.1"
@@ -7,14 +7,19 @@ server:
 # Default user id when no auth is used (single-user mode).
 app:
   default_user_id: "default"
+  # Stable model persona (repo-relative or absolute). Injected as the first system message each turn.
+  system_prompt_path: "prompts/system.md"
   # Obsidian vault root (optional; for obsidian tool).
-  # - Docker Compose: keep "/vault" and set OBSIDIAN_VAULT_PATH in .env (see .env.example).
-  # - Local (no Docker): set a host path, e.g. "/Users/you/Documents/ObsidianVault".
+  # - Docker Compose: keep "/vault". Host path belongs in .env as OBSIDIAN_VAULT_PATH
+  #   (compose mounts it at /vault). Do NOT put ${OBSIDIAN_VAULT_PATH} here — that is the
+  #   host path and would break inside the container.
+  # - Local (no Docker): set a host path, e.g. "C:/Users/you/Documents/ObsidianVault".
   obsidian_vault_path: "/vault"
 
-# Storage: backend "memory" (default) or "file". If "file", chats and memories persist to disk.
+# Storage: "file" persists chats/memories under data/ (recommended). "memory" is ephemeral (tests/dev).
+# Note: EmbeddingStore is always in-memory today (RAG scaffolding; see AGENTS.md).
 storage:
-  backend: "memory"
+  backend: "file"
   base_path: "data"
   chats_dir: "chats"
   memories_dir: "memories"

@@ -14,6 +14,8 @@ def test_load_config_no_file(tmp_path):
     assert config.server.host == "127.0.0.1"
     assert config.server.port == 8765
     assert config.app.default_user_id == "default"
+    assert config.app.system_prompt == ""
+    assert config.storage.backend == "file"
     assert config.model.provider == "stub"
     assert config.model.default_model == "stub"
 
@@ -34,6 +36,34 @@ model:
     assert config.server.port == 9000
     assert config.app.default_user_id == "me"
     assert config.model.default_model == "gpt-4o-mini"
+
+
+def test_load_config_system_prompt(tmp_path):
+    """system_prompt_path is resolved and file contents loaded into app.system_prompt."""
+    prompt_file = tmp_path / "persona.md"
+    prompt_file.write_text("You are a test assistant.\n", encoding="utf-8")
+    config_file = tmp_path / "config.yaml"
+    # Absolute path so resolution does not depend on project root layout.
+    config_file.write_text(f"""
+app:
+  system_prompt_path: "{prompt_file.as_posix()}"
+""")
+    config = load_config(config_file)
+    assert config.app.system_prompt == "You are a test assistant."
+    assert Path(config.app.system_prompt_path) == prompt_file.resolve()
+
+
+def test_load_config_system_prompt_missing_file(tmp_path):
+    """Missing system prompt file yields empty system_prompt (no crash)."""
+    config_file = tmp_path / "config.yaml"
+    missing = (tmp_path / "missing.md").as_posix()
+    config_file.write_text(f"""
+app:
+  system_prompt_path: "{missing}"
+""")
+    config = load_config(config_file)
+    assert config.app.system_prompt_path.endswith("missing.md")
+    assert config.app.system_prompt == ""
 
 
 def test_load_config_env_substitution(tmp_path):
