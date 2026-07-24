@@ -59,5 +59,5 @@ Interfaces live in `backend/interfaces/`. Prefer extending protocols + factories
 
 ## Known scaffolding (do not “fix” by deleting)
 
-- **`EmbeddingStore`**: created and passed into `ToolContext`, but **no tool uses it yet**. Always in-memory (even when `storage.backend: file`). Intended for future RAG / semantic memory — see `docs/optimizations.md` and `docs/todo.md`.
-- **Prompt caching**: planned; history is trimmed via `context.*` (extractive overflow summary). Memories use `memories.*` (profile allowlist + keyword/recency top-k); embeddings not wired yet.
+- **`EmbeddingStore`**: file-backed when `storage.backend: file` (under `embeddings_dir`); in-memory otherwise. Created and passed into `ToolContext`, but **no tool uses it yet**. Intended for Obsidian RAG / semantic memory — see `docs/optimizations.md` and `docs/todo.md`.
+- **Prompt caching**: planned; history is trimmed via `context.*` (extractive overflow summary). Memories use `memories.*` (profile allowlist + keyword/recency top-k); embeddings not wired into memory retrieval yet.

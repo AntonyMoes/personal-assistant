@@ -16,8 +16,8 @@ app:
   # - Local (no Docker): set a host path, e.g. "C:/Users/you/Documents/ObsidianVault".
   obsidian_vault_path: "/vault"
 
-# Storage: "file" persists chats/memories under data/ (recommended). "memory" is ephemeral (tests/dev).
-# Note: EmbeddingStore is always in-memory today (RAG scaffolding; see AGENTS.md).
+# Storage: "file" persists chats/memories/embeddings under data/ (recommended). "memory" is ephemeral (tests/dev).
+# EmbeddingStore is file-backed when backend is file; no tool uses it yet (Obsidian RAG next).
 storage:
   backend: "file"
   base_path: "data"

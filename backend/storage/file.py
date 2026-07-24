@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from pathlib import Path
+from typing import Any
 
-from backend.interfaces import ChatMessage
+from backend.interfaces import ChatMessage, EmbeddingStore
 from backend.interfaces.storage import (
     ChatId,
     ChatRecord,
@@ -22,6 +24,7 @@ from backend.interfaces.storage import (
 )
 from backend.interfaces.tools import Capability, Permission
 from backend.serialization import chat_message_from_dict, chat_message_to_dict
+from backend.storage.vectors import cosine_similarity
 from backend.utils import now_iso
 
 
@@ -435,3 +438,119 @@ class FileSystemPermissionStore(PermissionStore):
             data["permissions"] = perms
         perms[capability.value] = value.value
         self._write(data)
+
+
+# --- FileSystemEmbeddingStore ---
+
+
+def _safe_embedding_namespace(namespace: str) -> str:
+    """Validate namespace for use as a single path segment under embeddings_dir."""
+    ns = (namespace or "").strip()
+    if not ns or ns in (".", "..") or "/" in ns or "\\" in ns:
+        raise ValueError(f"invalid embedding namespace: {namespace!r}")
+    return ns
+
+
+class FileSystemEmbeddingStore(EmbeddingStore):
+    """EmbeddingStore that persists vectors under embeddings_dir (one JSON file per namespace)."""
+
+    def __init__(self, root_path: str | Path) -> None:
+        self._root = Path(root_path).resolve()
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    def _namespace_dir(self, namespace: str) -> Path:
+        return self._root / _safe_embedding_namespace(namespace)
+
+    def _index_path(self, namespace: str) -> Path:
+        return self._namespace_dir(namespace) / "index.json"
+
+    def _read_namespace(self, namespace: str) -> dict[str, dict[str, Any]]:
+        path = self._index_path(namespace)
+        if not path.exists():
+            return {}
+        raw = path.read_text(encoding="utf-8")
+        if not raw.strip():
+            return {}
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        vectors = data.get("vectors")
+        if not isinstance(vectors, dict):
+            return {}
+        # id -> {"vector": [...], "metadata": {...}}
+        out: dict[str, dict[str, Any]] = {}
+        for id_, entry in vectors.items():
+            if not isinstance(entry, dict):
+                continue
+            vec = entry.get("vector")
+            if not isinstance(vec, list):
+                continue
+            meta = entry.get("metadata")
+            out[str(id_)] = {
+                "vector": [float(x) for x in vec],
+                "metadata": dict(meta) if isinstance(meta, dict) else {},
+            }
+        return out
+
+    def _write_namespace(self, namespace: str, items: dict[str, dict[str, Any]]) -> None:
+        ns_dir = self._namespace_dir(namespace)
+        ns_dir.mkdir(parents=True, exist_ok=True)
+        payload = {"vectors": items}
+        self._index_path(namespace).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    async def upsert(
+            self,
+            namespace: str,
+            id: str,
+            vector: list[float],
+            metadata: dict[str, Any] | None = None,
+    ) -> None:
+        items = self._read_namespace(namespace)
+        items[id] = {
+            "vector": [float(x) for x in vector],
+            "metadata": dict(metadata) if metadata else {},
+        }
+        self._write_namespace(namespace, items)
+
+    async def search(
+            self,
+            namespace: str,
+            query_vector: list[float],
+            *,
+            k: int = 10,
+            filter_metadata: dict[str, Any] | None = None,
+    ) -> list[tuple[str, float, dict[str, Any]]]:
+        items = self._read_namespace(namespace)
+        if not items:
+            return []
+        filter_d = filter_metadata or {}
+        scored: list[tuple[str, float, dict[str, Any]]] = []
+        for id_, entry in items.items():
+            meta = entry.get("metadata") or {}
+            if all(meta.get(key) == value for key, value in filter_d.items()):
+                score = cosine_similarity(query_vector, entry["vector"])
+                scored.append((id_, score, dict(meta)))
+        scored.sort(key=lambda x: -x[1])
+        return scored[:k]
+
+    async def delete(self, namespace: str, id: str) -> bool:
+        items = self._read_namespace(namespace)
+        if id not in items:
+            return False
+        del items[id]
+        if items:
+            self._write_namespace(namespace, items)
+        else:
+            # Empty namespace: remove files so delete_namespace / cold start stay clean
+            ns_dir = self._namespace_dir(namespace)
+            if ns_dir.exists():
+                shutil.rmtree(ns_dir)
+        return True
+
+    async def delete_namespace(self, namespace: str) -> None:
+        ns_dir = self._namespace_dir(namespace)
+        if ns_dir.exists():
+            shutil.rmtree(ns_dir)

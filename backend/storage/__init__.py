@@ -3,7 +3,12 @@
 
 from backend.config import PermissionsConfig, StorageConfig, STORAGE_FILE, STORAGE_MEMORY
 from backend.interfaces.tools import Capability, Permission
-from backend.storage.file import FileSystemChatStore, FileSystemMemoryStore, FileSystemPermissionStore
+from backend.storage.file import (
+    FileSystemChatStore,
+    FileSystemEmbeddingStore,
+    FileSystemMemoryStore,
+    FileSystemPermissionStore,
+)
 from backend.storage.memory import InMemoryChatStore, InMemoryEmbeddingStore, InMemoryMemoryStore, InMemoryPermissionStore
 
 
@@ -24,13 +29,15 @@ def create_memory_store(storage_config: StorageConfig):
 
 
 def create_embedding_store(storage_config: StorageConfig):
-    """Create an EmbeddingStore.
+    """Create an EmbeddingStore based on storage.backend.
 
-    Scaffolding for future RAG / semantic memory: always returns an in-memory store
-    (ignores storage.backend / embeddings_dir). No tool reads or writes it yet.
-    See AGENTS.md and docs/optimizations.md.
+    file → FileSystemEmbeddingStore under storage.embeddings_dir;
+    memory (default) → InMemoryEmbeddingStore.
+    No tool reads/writes it yet (Obsidian RAG / semantic memory still to land).
     """
-    _ = storage_config  # reserved for a future file-backed implementation
+    backend = getattr(storage_config, "backend", STORAGE_MEMORY).lower().strip() or STORAGE_MEMORY
+    if backend == STORAGE_FILE:
+        return FileSystemEmbeddingStore(storage_config.embeddings_dir)
     return InMemoryEmbeddingStore()
 
 
@@ -61,6 +68,7 @@ def create_permission_store(storage_config: StorageConfig, permissions_config: P
 
 __all__ = [
     "FileSystemChatStore",
+    "FileSystemEmbeddingStore",
     "FileSystemMemoryStore",
     "FileSystemPermissionStore",
     "InMemoryChatStore",

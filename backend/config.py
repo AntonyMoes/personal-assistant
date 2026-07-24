@@ -43,7 +43,7 @@ class StorageConfig:
     chats_dir: str = "chats"
     memories_dir: str = "memories"
     embeddings_dir: str = "embeddings"
-    # STORAGE_FILE (recommended) or STORAGE_MEMORY for ChatStore and MemoryStore
+    # STORAGE_FILE (recommended) or STORAGE_MEMORY for ChatStore, MemoryStore, EmbeddingStore
     backend: str = STORAGE_FILE
 
 

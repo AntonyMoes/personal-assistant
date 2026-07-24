@@ -1,13 +1,18 @@
-"""Tests for InMemoryEmbeddingStore."""
+"""Tests for EmbeddingStore (in-memory and file backends share behavior)."""
 
 import pytest
 
+from backend.config import StorageConfig
+from backend.storage import create_embedding_store
+from backend.storage.file import FileSystemEmbeddingStore
 from backend.storage.memory import InMemoryEmbeddingStore
 
 
-@pytest.fixture
-def store():
-    return InMemoryEmbeddingStore()
+@pytest.fixture(params=["memory", "file"])
+def store(request, tmp_path):
+    if request.param == "memory":
+        return InMemoryEmbeddingStore()
+    return FileSystemEmbeddingStore(tmp_path)
 
 
 @pytest.mark.asyncio
@@ -80,3 +85,38 @@ async def test_upsert_overwrites(store):
     assert len(results) == 1
     assert results[0][0] == "id1"
     assert results[0][2]["v"] == 2
+
+
+@pytest.mark.asyncio
+async def test_fs_embedding_persistence(tmp_path):
+    store = FileSystemEmbeddingStore(tmp_path)
+    await store.upsert("obsidian", "Notes/Foo.md#0", [1.0, 0.0, 0.0], {"path": "Notes/Foo.md"})
+    await store.upsert("obsidian", "Notes/Bar.md#0", [0.0, 1.0, 0.0], {"path": "Notes/Bar.md"})
+
+    store2 = FileSystemEmbeddingStore(tmp_path)
+    results = await store2.search("obsidian", [1.0, 0.0, 0.0], k=2)
+    assert len(results) == 2
+    assert results[0][0] == "Notes/Foo.md#0"
+    assert results[0][2]["path"] == "Notes/Foo.md"
+
+
+@pytest.mark.asyncio
+async def test_fs_embedding_rejects_bad_namespace(tmp_path):
+    store = FileSystemEmbeddingStore(tmp_path)
+    with pytest.raises(ValueError):
+        await store.upsert("../escape", "id1", [1.0])
+    with pytest.raises(ValueError):
+        await store.upsert("a/b", "id1", [1.0])
+
+
+def test_create_embedding_store_respects_backend(tmp_path):
+    mem = create_embedding_store(StorageConfig(backend="memory"))
+    assert isinstance(mem, InMemoryEmbeddingStore)
+
+    file_cfg = StorageConfig(
+        backend="file",
+        base_path=str(tmp_path),
+        embeddings_dir=str(tmp_path / "embeddings"),
+    )
+    fs = create_embedding_store(file_cfg)
+    assert isinstance(fs, FileSystemEmbeddingStore)

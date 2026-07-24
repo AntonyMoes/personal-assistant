@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import uuid
 from typing import Any
 
@@ -20,6 +19,7 @@ from backend.interfaces.storage import (
     ResponseInProgressRecord,
 )
 from backend.interfaces.tools import Capability, Permission
+from backend.storage.vectors import cosine_similarity
 from backend.utils import now_iso
 
 
@@ -206,18 +206,6 @@ class InMemoryMemoryStore(MemoryStore):
         return True
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Cosine similarity; 0 if either vector has zero norm."""
-    if len(a) != len(b) or not a:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(x * x for x in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
-
 class InMemoryEmbeddingStore(EmbeddingStore):
     """In-memory vector store for embeddings. Suitable for testing and development; data is lost on restart."""
 
@@ -251,7 +239,7 @@ class InMemoryEmbeddingStore(EmbeddingStore):
         scored: list[tuple[str, float, dict[str, Any]]] = []
         for id, (vec, meta) in items.items():
             if all(meta.get(key) == value for key, value in filter_d.items()):
-                score = _cosine_similarity(query_vector, vec)
+                score = cosine_similarity(query_vector, vec)
                 scored.append((id, score, meta))
         scored.sort(key=lambda x: -x[1])
         return scored[:k]
