@@ -452,11 +452,21 @@ def _safe_embedding_namespace(namespace: str) -> str:
 
 
 class FileSystemEmbeddingStore(EmbeddingStore):
-    """EmbeddingStore that persists vectors under embeddings_dir (one JSON file per namespace)."""
+    """EmbeddingStore that persists vectors under embeddings_dir (one JSON file per namespace).
+
+    Keeps an in-memory cache per namespace and writes compact JSON only when flushing.
+    Use ``batched()`` or ``upsert_many`` / ``replace_many`` to avoid rewriting the file
+    on every single vector (critical for vault indexing).
+    """
 
     def __init__(self, root_path: str | Path) -> None:
         self._root = Path(root_path).resolve()
         self._root.mkdir(parents=True, exist_ok=True)
+        # namespace -> id -> {"vector": [...], "metadata": {...}}
+        self._cache: dict[str, dict[str, dict[str, Any]]] = {}
+        self._loaded: set[str] = set()
+        self._dirty: set[str] = set()
+        self._batch_depth = 0
 
     def _namespace_dir(self, namespace: str) -> Path:
         return self._root / _safe_embedding_namespace(namespace)
@@ -464,7 +474,11 @@ class FileSystemEmbeddingStore(EmbeddingStore):
     def _index_path(self, namespace: str) -> Path:
         return self._namespace_dir(namespace) / "index.json"
 
-    def _read_namespace(self, namespace: str) -> dict[str, dict[str, Any]]:
+    def batched(self):
+        """Defer disk flushes until the context exits (nested-safe)."""
+        return _EmbeddingBatchContext(self)
+
+    def _load_namespace_from_disk(self, namespace: str) -> dict[str, dict[str, Any]]:
         path = self._index_path(namespace)
         if not path.exists():
             return {}
@@ -480,7 +494,6 @@ class FileSystemEmbeddingStore(EmbeddingStore):
         vectors = data.get("vectors")
         if not isinstance(vectors, dict):
             return {}
-        # id -> {"vector": [...], "metadata": {...}}
         out: dict[str, dict[str, Any]] = {}
         for id_, entry in vectors.items():
             if not isinstance(entry, dict):
@@ -495,11 +508,60 @@ class FileSystemEmbeddingStore(EmbeddingStore):
             }
         return out
 
+    def _ensure_loaded(self, namespace: str) -> dict[str, dict[str, Any]]:
+        ns = _safe_embedding_namespace(namespace)
+        if ns not in self._loaded:
+            self._cache[ns] = self._load_namespace_from_disk(ns)
+            self._loaded.add(ns)
+        return self._cache[ns]
+
+    def _mark_dirty(self, namespace: str) -> None:
+        self._dirty.add(_safe_embedding_namespace(namespace))
+
+    def _should_flush_now(self) -> bool:
+        return self._batch_depth == 0
+
     def _write_namespace(self, namespace: str, items: dict[str, dict[str, Any]]) -> None:
         ns_dir = self._namespace_dir(namespace)
+        if not items:
+            if ns_dir.exists():
+                shutil.rmtree(ns_dir)
+            return
         ns_dir.mkdir(parents=True, exist_ok=True)
         payload = {"vectors": items}
-        self._index_path(namespace).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Compact JSON: pretty-printing 1536-d vectors dominated cold-index CPU/IO.
+        self._index_path(namespace).write_text(
+            json.dumps(payload, separators=(",", ":")),
+            encoding="utf-8",
+        )
+
+    async def flush(self, namespace: str | None = None) -> None:
+        if namespace is not None:
+            ns = _safe_embedding_namespace(namespace)
+            if ns not in self._dirty:
+                return
+            items = self._ensure_loaded(ns)
+            self._write_namespace(ns, items)
+            self._dirty.discard(ns)
+            return
+        for ns in list(self._dirty):
+            items = self._ensure_loaded(ns)
+            self._write_namespace(ns, items)
+        self._dirty.clear()
+
+    def _put(
+            self,
+            namespace: str,
+            id: str,
+            vector: list[float],
+            metadata: dict[str, Any] | None,
+    ) -> None:
+        items = self._ensure_loaded(namespace)
+        items[id] = {
+            "vector": [float(x) for x in vector],
+            "metadata": dict(metadata) if metadata else {},
+        }
+        self._mark_dirty(namespace)
 
     async def upsert(
             self,
@@ -508,12 +570,45 @@ class FileSystemEmbeddingStore(EmbeddingStore):
             vector: list[float],
             metadata: dict[str, Any] | None = None,
     ) -> None:
-        items = self._read_namespace(namespace)
-        items[id] = {
-            "vector": [float(x) for x in vector],
-            "metadata": dict(metadata) if metadata else {},
-        }
-        self._write_namespace(namespace, items)
+        self._put(namespace, id, vector, metadata)
+        if self._should_flush_now():
+            await self.flush(namespace)
+
+    async def upsert_many(
+            self,
+            namespace: str,
+            items: list[tuple[str, list[float], dict[str, Any] | None]],
+    ) -> None:
+        if not items:
+            return
+        for id_, vector, metadata in items:
+            self._put(namespace, id_, vector, metadata)
+        if self._should_flush_now():
+            await self.flush(namespace)
+
+    async def replace_many(
+            self,
+            namespace: str,
+            *,
+            delete_ids: list[str] | None = None,
+            upserts: list[tuple[str, list[float], dict[str, Any] | None]] | None = None,
+    ) -> None:
+        items = self._ensure_loaded(namespace)
+        changed = False
+        for id_ in delete_ids or ():
+            if id_ in items:
+                del items[id_]
+                changed = True
+        for id_, vector, metadata in upserts or ():
+            items[id_] = {
+                "vector": [float(x) for x in vector],
+                "metadata": dict(metadata) if metadata else {},
+            }
+            changed = True
+        if changed:
+            self._mark_dirty(namespace)
+            if self._should_flush_now():
+                await self.flush(namespace)
 
     async def search(
             self,
@@ -523,7 +618,7 @@ class FileSystemEmbeddingStore(EmbeddingStore):
             k: int = 10,
             filter_metadata: dict[str, Any] | None = None,
     ) -> list[tuple[str, float, dict[str, Any]]]:
-        items = self._read_namespace(namespace)
+        items = self._ensure_loaded(namespace)
         if not items:
             return []
         filter_d = filter_metadata or {}
@@ -537,20 +632,41 @@ class FileSystemEmbeddingStore(EmbeddingStore):
         return scored[:k]
 
     async def delete(self, namespace: str, id: str) -> bool:
-        items = self._read_namespace(namespace)
+        items = self._ensure_loaded(namespace)
         if id not in items:
             return False
         del items[id]
-        if items:
-            self._write_namespace(namespace, items)
-        else:
-            # Empty namespace: remove files so delete_namespace / cold start stay clean
-            ns_dir = self._namespace_dir(namespace)
-            if ns_dir.exists():
-                shutil.rmtree(ns_dir)
+        self._mark_dirty(namespace)
+        if self._should_flush_now():
+            await self.flush(namespace)
         return True
 
     async def delete_namespace(self, namespace: str) -> None:
-        ns_dir = self._namespace_dir(namespace)
+        ns = _safe_embedding_namespace(namespace)
+        self._cache[ns] = {}
+        self._loaded.add(ns)
+        self._dirty.discard(ns)
+        ns_dir = self._namespace_dir(ns)
         if ns_dir.exists():
             shutil.rmtree(ns_dir)
+
+
+class _EmbeddingBatchContext:
+    """Context manager: coalesce flushes for FileSystemEmbeddingStore."""
+
+    def __init__(self, store: FileSystemEmbeddingStore) -> None:
+        self._store = store
+
+    def __enter__(self) -> FileSystemEmbeddingStore:
+        self._store._batch_depth += 1
+        return self._store
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._store._batch_depth -= 1
+        if self._store._batch_depth == 0:
+            # Sync flush on exit (async flush via create_task not needed; write is sync).
+            dirty = list(self._store._dirty)
+            for ns in dirty:
+                items = self._store._ensure_loaded(ns)
+                self._store._write_namespace(ns, items)
+            self._store._dirty.clear()

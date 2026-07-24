@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -66,7 +67,7 @@ class ObsidianVaultIndexer:
     Maintain embedding vectors for vault markdown notes.
 
     Manifest (path → mtime + chunk ids) lives next to the embeddings root so
-    unchanged files are not re-embedded. Does not wire into ObsidianTool yet.
+    unchanged files are not re-embedded.
     """
 
     def __init__(
@@ -100,6 +101,13 @@ class ObsidianVaultIndexer:
     @property
     def vault(self) -> Path:
         return self._vault
+
+    def _batch_ctx(self):
+        """Defer file-store flushes across many path replaces when supported."""
+        batched = getattr(self._store, "batched", None)
+        if callable(batched):
+            return batched()
+        return nullcontext()
 
     def _load_manifest(self) -> dict[str, Any]:
         if self._manifest_path is None or not self._manifest_path.is_file():
@@ -136,6 +144,10 @@ class ObsidianVaultIndexer:
 
     async def ensure_index(self, *, max_files: int | None = None) -> IndexStats:
         """Incrementally index new/changed notes; drop deleted paths. Caps work if max_files set."""
+        with self._batch_ctx():
+            return await self._ensure_index_body(max_files=max_files)
+
+    async def _ensure_index_body(self, *, max_files: int | None = None) -> IndexStats:
         stats = IndexStats()
         md_files = self._list_md_files()
         stats.scanned = len(md_files)
@@ -189,6 +201,7 @@ class ObsidianVaultIndexer:
             await self._remove_rel(rel)
             stats.removed = 1
             self._save_manifest()
+            await self._store.flush(self._config.namespace)
             return stats
         if _should_skip(path, self._vault, self._config.skip_dir_names):
             return stats
@@ -209,17 +222,23 @@ class ObsidianVaultIndexer:
         if existed:
             stats.removed = 1
         self._save_manifest()
+        await self._store.flush(self._config.namespace)
         return stats
 
     async def _remove_rel(self, rel: str) -> None:
         entry = self._manifest.get("files", {}).pop(rel, None)
         chunk_ids = list((entry or {}).get("chunk_ids") or [])
-        for cid in chunk_ids:
-            await self._store.delete(self._config.namespace, cid)
+        if chunk_ids:
+            await self._store.replace_many(
+                self._config.namespace,
+                delete_ids=chunk_ids,
+                upserts=[],
+            )
 
     async def _index_file(self, rel: str, path: Path) -> int:
-        """Replace chunks for one file. Returns number of chunks upserted."""
-        await self._remove_rel(rel)
+        """Replace chunks for one file in a single store write. Returns chunks upserted."""
+        old_entry = self._manifest.get("files", {}).get(rel) or {}
+        old_ids = list(old_entry.get("chunk_ids") or [])
         try:
             content = path.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
@@ -234,22 +253,36 @@ class ObsidianVaultIndexer:
             overlap_chars=self._config.chunk_overlap_chars,
         )
         if not chunks:
+            await self._store.replace_many(
+                self._config.namespace,
+                delete_ids=old_ids,
+                upserts=[],
+            )
             self._manifest.setdefault("files", {})[rel] = {
                 "mtime": mtime,
                 "chunk_ids": [],
             }
             return 0
 
-        await self._embed_and_upsert(chunks, mtime)
+        upserts = await self._embed_chunks(chunks, mtime)
+        await self._store.replace_many(
+            self._config.namespace,
+            delete_ids=old_ids,
+            upserts=upserts,
+        )
         self._manifest.setdefault("files", {})[rel] = {
             "mtime": mtime,
             "chunk_ids": [c.id for c in chunks],
         }
         return len(chunks)
 
-    async def _embed_and_upsert(self, chunks: list[Chunk], mtime: float) -> None:
+    async def _embed_chunks(
+            self,
+            chunks: list[Chunk],
+            mtime: float,
+    ) -> list[tuple[str, list[float], dict[str, Any]]]:
         batch_size = max(1, self._config.embed_batch_size)
-        ns = self._config.namespace
+        upserts: list[tuple[str, list[float], dict[str, Any]]] = []
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
             vectors = await self._embed([c.text for c in batch])
@@ -268,4 +301,5 @@ class ObsidianVaultIndexer:
                     "mtime": mtime,
                     "snippet": snippet,
                 }
-                await self._store.upsert(ns, chunk.id, vector, meta)
+                upserts.append((chunk.id, vector, meta))
+        return upserts

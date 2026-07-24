@@ -163,6 +163,24 @@ class EmbeddingStore(Protocol):
     ) -> None:
         ...
 
+    async def upsert_many(
+            self,
+            namespace: str,
+            items: list[tuple[str, list[float], dict[str, Any] | None]],
+    ) -> None:
+        """Upsert many vectors; implementations may flush once."""
+        ...
+
+    async def replace_many(
+            self,
+            namespace: str,
+            *,
+            delete_ids: list[str] | None = None,
+            upserts: list[tuple[str, list[float], dict[str, Any] | None]] | None = None,
+    ) -> None:
+        """Delete ids and/or upsert in one logical write (path reindex)."""
+        ...
+
     async def search(
             self,
             namespace: str,
@@ -179,6 +197,10 @@ class EmbeddingStore(Protocol):
 
     async def delete_namespace(self, namespace: str) -> None:
         """Remove all vectors in the namespace."""
+        ...
+
+    async def flush(self, namespace: str | None = None) -> None:
+        """Persist dirty state. No-op for ephemeral stores."""
         ...
 
 

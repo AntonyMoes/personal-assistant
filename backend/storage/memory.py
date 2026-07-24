@@ -224,6 +224,29 @@ class InMemoryEmbeddingStore(EmbeddingStore):
             self._by_namespace[namespace] = {}
         self._by_namespace[namespace][id] = (list(vector), metadata.copy() if metadata else {})
 
+    async def upsert_many(
+            self,
+            namespace: str,
+            items: list[tuple[str, list[float], dict[str, Any] | None]],
+    ) -> None:
+        for id_, vector, metadata in items:
+            await self.upsert(namespace, id_, vector, metadata)
+
+    async def replace_many(
+            self,
+            namespace: str,
+            *,
+            delete_ids: list[str] | None = None,
+            upserts: list[tuple[str, list[float], dict[str, Any] | None]] | None = None,
+    ) -> None:
+        bucket = self._by_namespace.setdefault(namespace, {})
+        for id_ in delete_ids or ():
+            bucket.pop(id_, None)
+        for id_, vector, metadata in upserts or ():
+            bucket[id_] = (list(vector), metadata.copy() if metadata else {})
+        if not bucket:
+            self._by_namespace.pop(namespace, None)
+
     async def search(
             self,
             namespace: str,
@@ -254,6 +277,24 @@ class InMemoryEmbeddingStore(EmbeddingStore):
 
     async def delete_namespace(self, namespace: str) -> None:
         self._by_namespace.pop(namespace, None)
+
+    async def flush(self, namespace: str | None = None) -> None:
+        return None
+
+    def batched(self):
+        """No-op context manager (API parity with file store)."""
+        return _InMemoryBatchContext(self)
+
+
+class _InMemoryBatchContext:
+    def __init__(self, store: InMemoryEmbeddingStore) -> None:
+        self._store = store
+
+    def __enter__(self) -> InMemoryEmbeddingStore:
+        return self._store
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
 
 
 class InMemoryPermissionStore(PermissionStore):

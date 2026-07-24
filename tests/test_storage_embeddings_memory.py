@@ -109,6 +109,70 @@ async def test_fs_embedding_rejects_bad_namespace(tmp_path):
         await store.upsert("a/b", "id1", [1.0])
 
 
+@pytest.mark.asyncio
+async def test_upsert_many_and_replace_many(store):
+    await store.upsert_many(
+        "ns1",
+        [
+            ("a", [1.0, 0.0], {"path": "A.md"}),
+            ("b", [0.0, 1.0], {"path": "B.md"}),
+        ],
+    )
+    results = await store.search("ns1", [1.0, 0.0], k=5)
+    assert {r[0] for r in results} == {"a", "b"}
+
+    await store.replace_many(
+        "ns1",
+        delete_ids=["a"],
+        upserts=[("a2", [1.0, 0.0], {"path": "A.md"}), ("c", [0.5, 0.5], {"path": "C.md"})],
+    )
+    results = await store.search("ns1", [1.0, 0.0], k=5)
+    ids = {r[0] for r in results}
+    assert "a" not in ids
+    assert "a2" in ids and "b" in ids and "c" in ids
+
+
+@pytest.mark.asyncio
+async def test_fs_batched_defers_disk_write(tmp_path):
+    store = FileSystemEmbeddingStore(tmp_path)
+    index_path = tmp_path / "ns1" / "index.json"
+    with store.batched():
+        await store.upsert("ns1", "id1", [1.0, 0.0])
+        await store.upsert("ns1", "id2", [0.0, 1.0])
+        # Still deferred — file should not exist yet (or be stale empty)
+        assert not index_path.exists()
+    assert index_path.is_file()
+    # Compact JSON (no pretty indent)
+    raw = index_path.read_text(encoding="utf-8")
+    assert "\n  " not in raw
+    store2 = FileSystemEmbeddingStore(tmp_path)
+    results = await store2.search("ns1", [1.0, 0.0], k=2)
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_fs_replace_many_one_write(tmp_path, monkeypatch):
+    store = FileSystemEmbeddingStore(tmp_path)
+    writes = {"n": 0}
+    orig = store._write_namespace
+
+    def counting_write(namespace, items):
+        writes["n"] += 1
+        return orig(namespace, items)
+
+    monkeypatch.setattr(store, "_write_namespace", counting_write)
+    await store.replace_many(
+        "ns1",
+        delete_ids=["gone"],
+        upserts=[
+            ("a", [1.0, 0.0], None),
+            ("b", [0.0, 1.0], None),
+            ("c", [0.5, 0.5], None),
+        ],
+    )
+    assert writes["n"] == 1
+
+
 def test_create_embedding_store_respects_backend(tmp_path):
     mem = create_embedding_store(StorageConfig(backend="memory"))
     assert isinstance(mem, InMemoryEmbeddingStore)
