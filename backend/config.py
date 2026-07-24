@@ -85,6 +85,17 @@ class MemoryInjectionConfig:
 
 
 @dataclass
+class ObsidianRagConfig:
+    """Vault indexing / semantic search knobs (indexer; tool search lands later)."""
+
+    namespace: str = "obsidian"
+    # Approx chunk size in characters (~400 tokens). No tokenizer dependency.
+    chunk_chars: int = 1600
+    chunk_overlap_chars: int = 200
+    embed_batch_size: int = 64
+
+
+@dataclass
 class PermissionsConfig:
     defaults: dict[str, str] = field(default_factory=dict)
 
@@ -97,6 +108,7 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
     memories: MemoryInjectionConfig = field(default_factory=MemoryInjectionConfig)
+    obsidian_rag: ObsidianRagConfig = field(default_factory=ObsidianRagConfig)
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
 
 
@@ -218,6 +230,19 @@ def _dict_to_memories(data: dict[str, Any] | None) -> MemoryInjectionConfig:
     )
 
 
+def _dict_to_obsidian_rag(data: dict[str, Any] | None) -> ObsidianRagConfig:
+    if not data:
+        return ObsidianRagConfig()
+    defaults = ObsidianRagConfig()
+    namespace = str(data.get("namespace", defaults.namespace)).strip() or defaults.namespace
+    return ObsidianRagConfig(
+        namespace=namespace,
+        chunk_chars=int(data.get("chunk_chars", defaults.chunk_chars)),
+        chunk_overlap_chars=int(data.get("chunk_overlap_chars", defaults.chunk_overlap_chars)),
+        embed_batch_size=int(data.get("embed_batch_size", defaults.embed_batch_size)),
+    )
+
+
 def _dict_to_permissions(data: dict[str, Any] | None) -> PermissionsConfig:
     if not data:
         return PermissionsConfig()
@@ -248,5 +273,6 @@ def load_config(config_path: str | Path | None = None) -> Config:
         model=_dict_to_model(raw.get("model")),
         context=_dict_to_context(raw.get("context")),
         memories=_dict_to_memories(raw.get("memories")),
+        obsidian_rag=_dict_to_obsidian_rag(raw.get("obsidian_rag")),
         permissions=_dict_to_permissions(raw.get("permissions")),
     )

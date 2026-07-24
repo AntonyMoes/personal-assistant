@@ -52,6 +52,13 @@ memories:
   retrieve_top_k: 8
   candidate_limit: 100
 
+# Obsidian vault indexing (chunk → embed → EmbeddingStore). Used by indexer; semantic search tool next.
+obsidian_rag:
+  namespace: "obsidian"
+  chunk_chars: 1600
+  chunk_overlap_chars: 200
+  embed_batch_size: 64
+
 # Permission defaults per capability: allow | ask | ask_once_per_chat | deny
 permissions:
   defaults:

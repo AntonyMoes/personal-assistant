@@ -45,6 +45,7 @@ Tests: `python -m pytest` (or `.venv/Scripts/python -m pytest`).
 | Model providers | `backend/providers/` |
 | Stores | `backend/storage/` (`ChatStore`, `MemoryStore`, `EmbeddingStore`) |
 | Tools | `backend/tools/` (`remember`, `forget`, `obsidian`) |
+| Vault RAG indexer | `backend/rag/` (chunk + `ObsidianVaultIndexer`; semantic search tool TBD) |
 | HTTP / WS | `backend/routes/` |
 | Design notes | `docs/architecture.md`, `docs/ws_schema.md` |
 
@@ -59,5 +60,5 @@ Interfaces live in `backend/interfaces/`. Prefer extending protocols + factories
 
 ## Known scaffolding (do not “fix” by deleting)
 
-- **`EmbeddingStore`**: file-backed when `storage.backend: file` (under `embeddings_dir`); in-memory otherwise. Created and passed into `ToolContext`, but **no tool uses it yet**. Intended for Obsidian RAG / semantic memory — see `docs/optimizations.md` and `docs/todo.md`.
+- **`EmbeddingStore`**: file-backed when `storage.backend: file` (under `embeddings_dir`); in-memory otherwise. Vault indexer in `backend/rag/` can upsert into it; **ObsidianTool does not search it yet**. Semantic memory for `remember`/`forget` not wired.
 - **Prompt caching**: planned; history is trimmed via `context.*` (extractive overflow summary). Memories use `memories.*` (profile allowlist + keyword/recency top-k); embeddings not wired into memory retrieval yet.
