@@ -71,6 +71,20 @@ class ContextConfig:
 
 
 @dataclass
+class MemoryInjectionConfig:
+    """Which memories are injected into the model prefix each turn (not embeddings)."""
+
+    # Always-on profile keys (exact match). Empty = no profile block.
+    profile_keys: list[str] = field(
+        default_factory=lambda: ["timezone", "locale", "language"]
+    )
+    # Max non-profile memories selected by keyword overlap + recency.
+    retrieve_top_k: int = 8
+    # How many memories to load from the store before scoring. 0 = unlimited.
+    candidate_limit: int = 100
+
+
+@dataclass
 class PermissionsConfig:
     defaults: dict[str, str] = field(default_factory=dict)
 
@@ -82,6 +96,7 @@ class Config:
     storage: StorageConfig = field(default_factory=StorageConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
+    memories: MemoryInjectionConfig = field(default_factory=MemoryInjectionConfig)
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
 
 
@@ -187,6 +202,22 @@ def _dict_to_context(data: dict[str, Any] | None) -> ContextConfig:
     )
 
 
+def _dict_to_memories(data: dict[str, Any] | None) -> MemoryInjectionConfig:
+    if not data:
+        return MemoryInjectionConfig()
+    defaults = MemoryInjectionConfig()
+    raw_keys = data.get("profile_keys", defaults.profile_keys)
+    if isinstance(raw_keys, list):
+        profile_keys = [str(k).strip() for k in raw_keys if str(k).strip()]
+    else:
+        profile_keys = list(defaults.profile_keys)
+    return MemoryInjectionConfig(
+        profile_keys=profile_keys,
+        retrieve_top_k=int(data.get("retrieve_top_k", defaults.retrieve_top_k)),
+        candidate_limit=int(data.get("candidate_limit", defaults.candidate_limit)),
+    )
+
+
 def _dict_to_permissions(data: dict[str, Any] | None) -> PermissionsConfig:
     if not data:
         return PermissionsConfig()
@@ -216,5 +247,6 @@ def load_config(config_path: str | Path | None = None) -> Config:
         storage=_dict_to_storage(raw.get("storage"), base),
         model=_dict_to_model(raw.get("model")),
         context=_dict_to_context(raw.get("context")),
+        memories=_dict_to_memories(raw.get("memories")),
         permissions=_dict_to_permissions(raw.get("permissions")),
     )

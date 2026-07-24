@@ -86,6 +86,31 @@ context:
     assert config.context.summary_max_chars == 400
 
 
+def test_load_config_memories_section(tmp_path):
+    """memories.* knobs load into MemoryInjectionConfig."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+memories:
+  profile_keys:
+    - name
+    - timezone
+  retrieve_top_k: 3
+  candidate_limit: 50
+""")
+    config = load_config(config_file)
+    assert config.memories.profile_keys == ["name", "timezone"]
+    assert config.memories.retrieve_top_k == 3
+    assert config.memories.candidate_limit == 50
+
+
+def test_load_config_memories_defaults(tmp_path):
+    """Missing memories section keeps defaults."""
+    config = load_config(tmp_path / "nonexistent.yaml")
+    assert "name" in config.memories.profile_keys
+    assert config.memories.retrieve_top_k == 8
+    assert config.memories.candidate_limit == 100
+
+
 def test_load_config_env_substitution(tmp_path):
     """${VAR} in config is replaced with os.environ."""
     config_file = tmp_path / "config.yaml"

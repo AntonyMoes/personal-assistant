@@ -42,6 +42,16 @@ context:
   summary_message_chars: 200
   summary_max_chars: 2000
 
+# Memory injection (ephemeral system block after persona). No embeddings yet.
+# profile_keys: always included when present. retrieve_top_k: keyword+recency for the rest.
+memories:
+  profile_keys:
+    - timezone
+    - locale
+    - language
+  retrieve_top_k: 8
+  candidate_limit: 100
+
 # Permission defaults per capability: allow | ask | ask_once_per_chat | deny
 permissions:
   defaults:

@@ -12,6 +12,11 @@ from backend.interfaces import ModelProvider, ToolResult, ChatStore
 from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType, ModelEvent
 from backend.interfaces.storage import ResponseInProgressRecord, PendingToolCall, PermissionStore
 from backend.interfaces.tools import ToolContext, Tool, Permission
+from backend.memory_policy import (
+    format_memory_block,
+    latest_user_query,
+    select_memories_for_injection,
+)
 from backend.tools import RememberTool, ForgetTool
 from backend.utils import WSChannel
 from backend.ws_schema import (
@@ -190,7 +195,8 @@ async def _run_stream(
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
-    Trims chat history via config.context, then injects system_prompt and memories as ephemeral system messages.
+    Trims chat history via config.context, then injects system_prompt and selected memories
+    (profile allowlist + keyword/recency top-k) as ephemeral system messages.
     If tools are set, they are passed to the model and tool_call events are executed; results are
     sent and the model is re-called until it returns no tool calls.
     Can be cancelled (asyncio.CancelledError); on cancel, persists partial assistant content and sends done(stopped=True).
@@ -208,17 +214,24 @@ async def _run_stream(
     windowed = apply_context_window(history, config.context)
     history_with_memories = windowed.messages
 
-    # Prepend stable system prompt, then global memories (not persisted into chat history).
+    # Prepend stable system prompt, then selected memories (not persisted into chat history).
     prefix: list[ChatMessage] = []
     system_prompt = (config.app.system_prompt or "").strip()
     if system_prompt:
         prefix.append(ChatMessage(role="system", content=system_prompt))
     if memory_store and user_id:
-        memories = await memory_store.list_memories(user_id, limit=50)
-        if memories:
-            lines = [f"- {m.key}: {m.content}" for m in memories]
-            memory_text = "Stored memories (use when relevant):\n" + "\n".join(lines)
-            prefix.append(ChatMessage(role="system", content=memory_text))
+        mem_cfg = config.memories
+        limit = mem_cfg.candidate_limit if mem_cfg.candidate_limit > 0 else 10_000
+        candidates = await memory_store.list_memories(user_id, limit=limit)
+        if candidates:
+            query = latest_user_query(
+                user_content if isinstance(user_content, str) else None,
+                history,
+            )
+            selection = select_memories_for_injection(candidates, query, mem_cfg)
+            memory_text = format_memory_block(selection)
+            if memory_text:
+                prefix.append(ChatMessage(role="system", content=memory_text))
     if prefix:
         history_with_memories = prefix + history_with_memories
 
