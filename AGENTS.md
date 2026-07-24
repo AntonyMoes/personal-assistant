@@ -39,6 +39,7 @@ Tests: `python -m pytest` (or `.venv/Scripts/python -m pytest`).
 |------|------|
 | App wiring / DI | `backend/main.py` |
 | Chat + tool loop | `backend/orchestration.py` |
+| Context window | `backend/context.py` (trim history; config `context.*`) |
 | System prompt | `prompts/system.md` (injected every turn) |
 | Model providers | `backend/providers/` |
 | Stores | `backend/storage/` (`ChatStore`, `MemoryStore`, `EmbeddingStore`) |
@@ -58,4 +59,4 @@ Interfaces live in `backend/interfaces/`. Prefer extending protocols + factories
 ## Known scaffolding (do not “fix” by deleting)
 
 - **`EmbeddingStore`**: created and passed into `ToolContext`, but **no tool uses it yet**. Always in-memory (even when `storage.backend: file`). Intended for future RAG / semantic memory — see `docs/optimizations.md` and `docs/todo.md`.
-- **Prompt caching, history truncation, relevance-filtered memories**: planned; current orchestration dumps up to 50 memories and full chat history each turn.
+- **Prompt caching, relevance-filtered memories**: planned; history is trimmed via `context.*` (extractive overflow summary). Memory injection still dumps up to 50 entries each turn.

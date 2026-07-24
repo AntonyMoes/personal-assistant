@@ -18,6 +18,7 @@ def test_load_config_no_file(tmp_path):
     assert config.storage.backend == "file"
     assert config.model.provider == "stub"
     assert config.model.default_model == "stub"
+    assert config.context.max_messages == 40
 
 
 def test_load_config_with_file(tmp_path):
@@ -64,6 +65,25 @@ app:
     config = load_config(config_file)
     assert config.app.system_prompt_path.endswith("missing.md")
     assert config.app.system_prompt == ""
+
+
+def test_load_config_context_section(tmp_path):
+    """context.* knobs load into ContextConfig."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+context:
+  max_messages: 12
+  max_chars: 5000
+  summarize_overflow: false
+  summary_message_chars: 80
+  summary_max_chars: 400
+""")
+    config = load_config(config_file)
+    assert config.context.max_messages == 12
+    assert config.context.max_chars == 5000
+    assert config.context.summarize_overflow is False
+    assert config.context.summary_message_chars == 80
+    assert config.context.summary_max_chars == 400
 
 
 def test_load_config_env_substitution(tmp_path):

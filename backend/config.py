@@ -55,6 +55,22 @@ class ModelConfig:
 
 
 @dataclass
+class ContextConfig:
+    """Chat-history window for model requests (not applied to persona/memory prefix)."""
+
+    # Max persisted history messages to keep. 0 = unlimited.
+    max_messages: int = 40
+    # Soft char budget for history content. 0 = unlimited.
+    max_chars: int = 0
+    # If True, dropped older messages become one extractive system summary.
+    summarize_overflow: bool = True
+    # Max chars per dropped message line in the summary.
+    summary_message_chars: int = 200
+    # Max total chars for the extractive summary block.
+    summary_max_chars: int = 2000
+
+
+@dataclass
 class PermissionsConfig:
     defaults: dict[str, str] = field(default_factory=dict)
 
@@ -65,6 +81,7 @@ class Config:
     app: AppConfig = field(default_factory=AppConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
+    context: ContextConfig = field(default_factory=ContextConfig)
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
 
 
@@ -158,6 +175,18 @@ def _dict_to_model(data: dict[str, Any] | None) -> ModelConfig:
     )
 
 
+def _dict_to_context(data: dict[str, Any] | None) -> ContextConfig:
+    if not data:
+        return ContextConfig()
+    return ContextConfig(
+        max_messages=int(data.get("max_messages", 40)),
+        max_chars=int(data.get("max_chars", 0)),
+        summarize_overflow=bool(data.get("summarize_overflow", True)),
+        summary_message_chars=int(data.get("summary_message_chars", 200)),
+        summary_max_chars=int(data.get("summary_max_chars", 2000)),
+    )
+
+
 def _dict_to_permissions(data: dict[str, Any] | None) -> PermissionsConfig:
     if not data:
         return PermissionsConfig()
@@ -186,5 +215,6 @@ def load_config(config_path: str | Path | None = None) -> Config:
         app=_dict_to_app(raw.get("app"), base),
         storage=_dict_to_storage(raw.get("storage"), base),
         model=_dict_to_model(raw.get("model")),
+        context=_dict_to_context(raw.get("context")),
         permissions=_dict_to_permissions(raw.get("permissions")),
     )

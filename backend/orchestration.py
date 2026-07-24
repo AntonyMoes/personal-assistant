@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from backend.context import apply_context_window
 from backend.interfaces import ModelProvider, ToolResult, ChatStore
 from backend.interfaces.model import ChatMessage, ChatRequest, ModelEventType, ModelEvent
 from backend.interfaces.storage import ResponseInProgressRecord, PendingToolCall, PermissionStore
@@ -189,7 +190,7 @@ async def _run_stream(
 ) -> None:
     """
     Run one assistant turn: append user message, stream model response to ws, persist assistant message.
-    Injects config.app.system_prompt (if set), then memories, as ephemeral system messages.
+    Trims chat history via config.context, then injects system_prompt and memories as ephemeral system messages.
     If tools are set, they are passed to the model and tool_call events are executed; results are
     sent and the model is re-called until it returns no tool calls.
     Can be cancelled (asyncio.CancelledError); on cancel, persists partial assistant content and sends done(stopped=True).
@@ -201,11 +202,15 @@ async def _run_stream(
 
     if isinstance(user_content, str):
         await chat_store.append_messages(chat_id, [ChatMessage("user", user_content)])
-    history_with_memories = await chat_store.get_chat_messages(chat_id)
+    history = await chat_store.get_chat_messages(chat_id)
+
+    # Trim persisted history to configured window (extractive summary of overflow; no LLM).
+    windowed = apply_context_window(history, config.context)
+    history_with_memories = windowed.messages
 
     # Prepend stable system prompt, then global memories (not persisted into chat history).
     prefix: list[ChatMessage] = []
-    system_prompt = (getattr(getattr(config, "app", None), "system_prompt", None) or "").strip()
+    system_prompt = (config.app.system_prompt or "").strip()
     if system_prompt:
         prefix.append(ChatMessage(role="system", content=system_prompt))
     if memory_store and user_id:
